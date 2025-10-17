@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Abonnement expire bientôt - {{ site_name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+        }
+        .content {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 0 0 10px 10px;
+        }
+        .urgent {
+            background: #ffebee;
+            border: 1px solid #f44336;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .days {
+            font-size: 48px;
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        .button {
+            display: inline-block;
+            background: #e74c3c;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚨 Action requise</h1>
+        <h2>Votre abonnement expire bientôt</h2>
+    </div>
+    
+    <div class="content">
+        <p>Bonjour {{ superadmin.first_name }},</p>
+        
+        <p>Nous vous informons que votre abonnement pour l'entreprise <strong>{{ entreprise.nom }}</strong> expire dans {{ data.days_remaining }} jour{% if data.days_remaining > 1 %}s{% endif %}.</p>
+        
+        <div class="urgent">
+            <div class="days">{{ data.days_remaining }}</div>
+            <p>jour{% if data.days_remaining > 1 %}s{% endif %} restant{% if data.days_remaining > 1 %}s{% endif %}</p>
+            <p><strong>Renouvelez maintenant pour éviter l'interruption de service !</strong></p>
+        </div>
+        
+        <h3>Plan actuel : {{ plan.display_name }}</h3>
+        <p>Prix : {{ plan.price_monthly }} XAF/mois</p>
+        
+        <h3>Que se passe-t-il si vous ne renouvelez pas ?</h3>
+        <ul>
+            <li>❌ Accès limité aux fonctionnalités</li>
+            <li>❌ Impossible de créer de nouveaux éléments</li>
+            <li>❌ Vos données restent sauvegardées</li>
+        </ul>
+        
+        <h3>Options disponibles :</h3>
+        <ul>
+            <li>✅ <strong>Renouveler</strong> votre plan actuel</li>
+            <li>✅ <strong>Changer</strong> vers un autre plan</li>
+            <li>✅ <strong>Contacter</strong> notre support pour de l'aide</li>
+        </ul>
+        
+        <div style="text-align: center;">
+            <a href="{{ site_url }}/abonnement" class="button">Renouveler maintenant</a>
+        </div>
+        
+        <p>Si vous avez des questions ou rencontrez des difficultés, notre équipe support est là pour vous aider.</p>
+        
+        <p>Cordialement,<br>
+        L'équipe {{ site_name }}</p>
+    </div>
+    
+    <div class="footer">
+        <p>{{ site_name }} - Gestion de stock simplifiée</p>
+        <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
+    </div>
+</body>
+</html>
+
+
+
+
+
+
+
+

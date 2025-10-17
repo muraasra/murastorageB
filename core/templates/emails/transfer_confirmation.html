@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirmation de Transfert - {{ site_name }}</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .logo {
+            font-size: 28px;
+            font-weight: bold;
+            color: #4CAF50;
+            margin-bottom: 10px;
+        }
+        .success-icon {
+            font-size: 48px;
+            color: #4CAF50;
+            margin-bottom: 20px;
+        }
+        .title {
+            color: #2c3e50;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        .info-box {
+            background-color: #f8f9fa;
+            border-left: 4px solid #4CAF50;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 5px 0;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #555;
+        }
+        .info-value {
+            color: #333;
+        }
+        .reference {
+            background-color: #e8f5e8;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            margin: 20px 0;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #666;
+            font-size: 14px;
+        }
+        .button {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">{{ site_name }}</div>
+            <div class="success-icon">✅</div>
+            <h1 class="title">Transfert Confirmé</h1>
+        </div>
+
+        <p>Bonjour <strong>{{ user.first_name }} {{ user.last_name }}</strong>,</p>
+
+        <p>Votre transfert de stock a été effectué avec succès !</p>
+
+        <div class="info-box">
+            <h3 style="margin-top: 0; color: #4CAF50;">Détails du Transfert</h3>
+            <div class="info-row">
+                <span class="info-label">Produit :</span>
+                <span class="info-value">{{ produit }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Quantité :</span>
+                <span class="info-value">{{ quantite }} unité(s)</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Entrepôt source :</span>
+                <span class="info-value">{{ boutique_source.nom }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Entrepôt destination :</span>
+                <span class="info-value">{{ boutique_destination.nom }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Motif :</span>
+                <span class="info-value">{{ motif }}</span>
+            </div>
+        </div>
+
+        <div class="reference">
+            Référence du transfert : {{ reference_transfert }}
+        </div>
+
+        <p>Le stock a été mis à jour dans les deux entrepôts et les notifications ont été envoyées aux personnes concernées.</p>
+
+        <div style="text-align: center;">
+            <a href="{{ site_url }}/mouvements-stock" class="button">Voir les Mouvements</a>
+        </div>
+
+        <div class="footer">
+            <p>Merci d'utiliser {{ site_name }} pour la gestion de votre stock.</p>
+            <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
+        </div>
+    </div>
+</body>
+</html>
+

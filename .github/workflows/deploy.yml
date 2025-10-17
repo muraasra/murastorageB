@@ -1,0 +1,27 @@
+name: Deploy to PythonAnywhere
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Permet de déclencher manuellement
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Deploy to PythonAnywhere
+      uses: appleboy/ssh-action@v0.1.5
+      with:
+        host: ${{ secrets.PYTHONANYWHERE_HOST }}
+        username: ${{ secrets.PYTHONANYWHERE_USERNAME }}
+        key: ${{ secrets.PYTHONANYWHERE_SSH_KEY }}
+        script: |
+          cd /home/${{ secrets.PYTHONANYWHERE_USERNAME }}/walner-durel/Backend
+          git pull origin main
+          source /home/${{ secrets.PYTHONANYWHERE_USERNAME }}/.virtualenvs/walner-durel/bin/activate
+          pip install -r requirements.txt
+          python manage.py collectstatic --noinput
+          python manage.py migrate
+          touch storage/wsgi.py
+          echo "✅ Déploiement terminé !"

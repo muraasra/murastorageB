@@ -1,0 +1,16 @@
+[
+  {
+    "test": "Connexion serveur",
+    "success": true,
+    "message": "Statut: 200",
+    "timestamp": "2025-10-01T03:32:29.167777",
+    "data": null
+  },
+  {
+    "test": "Inscription entreprise",
+    "success": true,
+    "message": "Entreprise créée avec succès",
+    "timestamp": "2025-10-01T03:32:34.142737",
+    "data": null
+  }
+]

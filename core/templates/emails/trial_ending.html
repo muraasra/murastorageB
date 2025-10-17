@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Période d'essai se termine - {{ site_name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+        }
+        .content {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 0 0 10px 10px;
+        }
+        .countdown {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .days {
+            font-size: 48px;
+            font-weight: bold;
+            color: #f57c00;
+        }
+        .button {
+            display: inline-block;
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⏰ Période d'essai</h1>
+        <h2>Votre essai se termine bientôt</h2>
+    </div>
+    
+    <div class="content">
+        <p>Bonjour {{ superadmin.first_name }},</p>
+        
+        <p>Nous vous informons que la période d'essai gratuite de votre entreprise <strong>{{ entreprise.nom }}</strong> se termine dans quelques jours.</p>
+        
+        <div class="countdown">
+            <div class="days">{{ data.days_remaining }}</div>
+            <p>jour{% if data.days_remaining > 1 %}s{% endif %} restant{% if data.days_remaining > 1 %}s{% endif %}</p>
+        </div>
+        
+        <h3>Que se passe-t-il après la fin de l'essai ?</h3>
+        <ul>
+            <li>✅ Vos données sont conservées</li>
+            <li>✅ Vous passez automatiquement au plan <strong>{{ plan.display_name }}</strong></li>
+            <li>✅ Vous pouvez choisir un autre plan à tout moment</li>
+        </ul>
+        
+        <h3>Choisissez votre plan maintenant :</h3>
+        <ul>
+            <li><strong>Free</strong> - Gratuit avec limitations</li>
+            <li><strong>Basic</strong> - 15,000 XAF/mois - Idéal pour petites entreprises</li>
+            <li><strong>Premium</strong> - 35,000 XAF/mois - Fonctionnalités avancées</li>
+            <li><strong>Organisation</strong> - 75,000 XAF/mois - Tout inclus</li>
+        </ul>
+        
+        <div style="text-align: center;">
+            <a href="{{ site_url }}/abonnement" class="button">Choisir mon plan</a>
+        </div>
+        
+        <p>Si vous avez des questions ou besoin d'aide pour choisir le plan qui vous convient, n'hésitez pas à nous contacter.</p>
+        
+        <p>Cordialement,<br>
+        L'équipe {{ site_name }}</p>
+    </div>
+    
+    <div class="footer">
+        <p>{{ site_name }} - Gestion de stock simplifiée</p>
+        <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
+    </div>
+</body>
+</html>
+
+
+
+
+
+
+
+

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nouvelle demande de contact - Mura Storage</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            background: linear-gradient(135deg, #10B981, #059669);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+        }
+        .logo {
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .alert-badge {
+            background-color: #fef3c7;
+            color: #92400e;
+            padding: 10px 20px;
+            border-radius: 25px;
+            display: inline-block;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        .client-info {
+            background-color: #f9fafb;
+            border-left: 4px solid #10b981;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .info-title {
+            color: #10b981;
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        .message-section {
+            background-color: #eff6ff;
+            border: 1px solid #3b82f6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .message-content {
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 3px solid #3b82f6;
+            white-space: pre-wrap;
+        }
+        .action-required {
+            background-color: #fef2f2;
+            border: 2px solid #ef4444;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .action-title {
+            color: #dc2626;
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        .contact-info {
+            background-color: #f0f9ff;
+            border: 1px solid #0ea5e9;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            color: #6b7280;
+            font-size: 14px;
+        }
+        .cta-button {
+            display: inline-block;
+            background-color: #10b981;
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 15px 0;
+        }
+        .info-item {
+            background-color: white;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #e5e7eb;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #374151;
+        }
+        .info-value {
+            color: #6b7280;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">Mura Storage</div>
+            <h1>🔔 Nouvelle demande de contact</h1>
+            <div class="alert-badge">⚠️ Action requise</div>
+        </div>
+        
+        <div class="client-info">
+            <div class="info-title">👤 Informations du client</div>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Nom complet</div>
+                    <div class="info-value">{{ fullname }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Email</div>
+                    <div class="info-value">{{ email }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Téléphone</div>
+                    <div class="info-value">{{ phone }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Entreprise</div>
+                    <div class="info-value">{{ company|default:"Non spécifiée" }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Sujet</div>
+                    <div class="info-value">{{ subject }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Date</div>
+                    <div class="info-value">{{ timestamp }}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="message-section">
+            <h3 style="color: #3b82f6; margin-top: 0;">💬 Message du client</h3>
+            <div class="message-content">{{ message }}</div>
+        </div>
+        
+        <div class="action-required">
+            <div class="action-title">🚨 Action requise</div>
+            <p>Ce client souhaite obtenir plus d'informations sur Mura Storage. Veuillez le contacter dans les plus brefs délais pour maximiser les chances de conversion.</p>
+        </div>
+        
+        <div class="contact-info">
+            <h3 style="color: #0ea5e9; margin-top: 0;">📞 Informations de contact</h3>
+            <p><strong>Email du client :</strong> <a href="mailto:{{ email }}">{{ email }}</a></p>
+            <p><strong>Téléphone :</strong> <a href="tel:{{ phone }}">{{ phone }}</a></p>
+            <p><strong>Sujet d'intérêt :</strong> {{ subject }}</p>
+        </div>
+        
+        <div style="text-align: center;">
+            <a href="mailto:{{ email }}?subject=Re: {{ subject }} - Mura Storage" class="cta-button">
+                Répondre au client
+            </a>
+        </div>
+        
+        <div class="footer">
+            <p><strong>Mura Storage - Groupe Mura</strong></p>
+            <p>Email envoyé depuis le site web Mura Storage</p>
+            <p>Bamendzi 2, Bafoussam, Cameroun</p>
+            <p>© 2025 Mura Storage. Tous droits réservés.</p>
+        </div>
+    </div>
+</body>
+</html>
+
+

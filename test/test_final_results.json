@@ -1,0 +1,73 @@
+{
+  "total_tests": 11,
+  "passed": 11,
+  "failed": 0,
+  "details": [
+    {
+      "test": "Connexion serveur",
+      "success": true,
+      "message": "Statut: 200",
+      "data": null
+    },
+    {
+      "test": "Création entreprise",
+      "success": true,
+      "message": "Entreprise créée: Entreprise Final 1759282593",
+      "data": null
+    },
+    {
+      "test": "Connexion utilisateur",
+      "success": true,
+      "message": "Token obtenu: a60347310e0679cd5c34...",
+      "data": null
+    },
+    {
+      "test": "Liste entreprises",
+      "success": true,
+      "message": "8 éléments trouvés",
+      "data": null
+    },
+    {
+      "test": "Liste boutiques",
+      "success": true,
+      "message": "7 éléments trouvés",
+      "data": null
+    },
+    {
+      "test": "Liste produits",
+      "success": true,
+      "message": "10 éléments trouvés",
+      "data": null
+    },
+    {
+      "test": "Liste factures",
+      "success": true,
+      "message": "8 éléments trouvés",
+      "data": null
+    },
+    {
+      "test": "Liste journaux",
+      "success": true,
+      "message": "29 éléments trouvés",
+      "data": null
+    },
+    {
+      "test": "Liste utilisateurs",
+      "success": true,
+      "message": "10 éléments trouvés",
+      "data": null
+    },
+    {
+      "test": "Création produit",
+      "success": true,
+      "message": "Produit créé: Produit Final 1759282593 (ID: 23)",
+      "data": null
+    },
+    {
+      "test": "Vérification email",
+      "success": true,
+      "message": "Endpoint fonctionnel (code incorrect attendu)",
+      "data": null
+    }
+  ]
+}

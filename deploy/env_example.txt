@@ -1,0 +1,18 @@
+# Variables d'environnement pour PythonAnywhere
+# Copiez ce fichier vers .env et modifiez les valeurs
+
+# Configuration Django
+DEBUG=False
+SECRET_KEY=your-secret-key-here
+ALLOWED_HOSTS=yourusername.pythonanywhere.com,www.yourusername.pythonanywhere.com
+
+# Base de données
+DB_NAME=yourusername$walner_durel
+DB_USER=yourusername
+DB_PASSWORD=your_password
+DB_HOST=yourusername.mysql.pythonanywhere-services.com
+DB_PORT=3306
+
+# Fichiers statiques
+STATIC_ROOT=/home/yourusername/walner-durel/static/
+MEDIA_ROOT=/home/yourusername/walner-durel/media/

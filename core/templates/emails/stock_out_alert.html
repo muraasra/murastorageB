@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URGENT: Rupture de Stock - {{ site_name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+        }
+        .content {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 0 0 10px 10px;
+        }
+        .urgent-box {
+            background: #ffebee;
+            border: 2px solid #f44336;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .stock-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stock-table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            color: #495057;
+        }
+        .stock-table td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .stock-table tr:hover {
+            background: #f8f9fa;
+        }
+        .quantity-zero {
+            color: #f44336;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .button {
+            display: inline-block;
+            background: #e74c3c;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚨 URGENT: Rupture de Stock</h1>
+        <h2>{{ total_out_stocks }} produit(s) en rupture totale</h2>
+    </div>
+    
+    <div class="content">
+        <p>Bonjour {{ superadmin.first_name }},</p>
+        
+        <p><strong>ATTENTION:</strong> Votre entreprise <strong>{{ entreprise.nom }}</strong> a <strong>{{ total_out_stocks }} produit(s)</strong> en rupture totale de stock.</p>
+        
+        <div class="urgent-box">
+            <h3>🚨 ACTION IMMÉDIATE REQUISE</h3>
+            <p><strong>Date de l'alerte:</strong> {{ alert_date }}</p>
+            <p><strong>Produits en rupture:</strong> {{ total_out_stocks }}</p>
+            <p><strong>Impact:</strong> Ventes impossibles pour ces produits</p>
+        </div>
+        
+        <h3>📋 Produits en rupture de stock</h3>
+        <table class="stock-table">
+            <thead>
+                <tr>
+                    <th>Produit</th>
+                    <th>Boutique</th>
+                    <th>Stock Actuel</th>
+                    <th>Stock Minimum</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for stock in out_of_stocks %}
+                <tr>
+                    <td><strong>{{ stock.produit.nom }}</strong></td>
+                    <td>{{ stock.entrepot.nom }}</td>
+                    <td class="quantity-zero">0</td>
+                    <td>{{ stock.produit.stock_minimum }}</td>
+                    <td>
+                        <span style="color: #f44336; font-weight: bold;">🔴 COMMANDER URGENT</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <h3>⚡ Actions URGENTES à effectuer</h3>
+        <ul>
+            <li>🚨 <strong>Commander IMMÉDIATEMENT</strong> les produits en rupture</li>
+            <li>📞 <strong>Contacter</strong> vos fournisseurs prioritaires</li>
+            <li>🚚 <strong>Organiser</strong> des livraisons express</li>
+            <li>📊 <strong>Analyser</strong> les causes de ces ruptures</li>
+            <li>⚙️ <strong>Ajuster</strong> vos stocks minimums</li>
+        </ul>
+        
+        <div style="text-align: center;">
+            <a href="{{ site_url }}/stocks" class="button">Gérer mes stocks URGENT</a>
+        </div>
+        
+        <p><strong>Impact sur votre business:</strong> Les ruptures de stock peuvent causer des pertes de ventes importantes et affecter la satisfaction de vos clients.</p>
+        
+        <p>Cordialement,<br>
+        L'équipe {{ site_name }}</p>
+    </div>
+    
+    <div class="footer">
+        <p>{{ site_name }} - Gestion de stock simplifiée</p>
+        <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
+    </div>
+</body>
+</html>
+

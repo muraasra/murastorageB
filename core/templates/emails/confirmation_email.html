@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Félicitations ! Votre entreprise est créée</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo {
+            color: #10b981;
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .success-badge {
+            background-color: #d1fae5;
+            color: #065f46;
+            padding: 10px 20px;
+            border-radius: 25px;
+            display: inline-block;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        .info-section {
+            background-color: #f9fafb;
+            border-left: 4px solid #10b981;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .info-title {
+            color: #10b981;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .next-steps {
+            background-color: #eff6ff;
+            border: 1px solid #3b82f6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .step {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: white;
+            border-radius: 5px;
+            border-left: 3px solid #3b82f6;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            color: #6b7280;
+            font-size: 14px;
+        }
+        .cta-button {
+            display: inline-block;
+            background-color: #10b981;
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">StoRage</div>
+            <h1>🎉 Félicitations !</h1>
+            <div class="success-badge">✅ Votre entreprise est maintenant active</div>
+        </div>
+        
+        <p>Bonjour <strong>{{ user.first_name }} {{ user.last_name }}</strong>,</p>
+        
+        <p>Votre email a été vérifié avec succès ! Votre entreprise <strong>{{ entreprise.nom }}</strong> est maintenant officiellement créée et active sur notre plateforme.</p>
+        
+        <div class="info-section">
+            <div class="info-title">📋 Informations de votre entreprise :</div>
+            <ul>
+                <li><strong>Nom :</strong> {{ entreprise.nom }}</li>
+                <li><strong>ID Entreprise :</strong> {{ entreprise.id_entreprise }}</li>
+                <li><strong>Secteur d'activité :</strong> {{ entreprise.secteur_activite }}</li>
+                <li><strong>Ville :</strong> {{ entreprise.ville }}</li>
+                <li><strong>Email :</strong> {{ entreprise.email }}</li>
+                <li><strong>Pack choisi :</strong> {{ entreprise.get_pack_type_display }}</li>
+                <li><strong>Entrepôt principal :</strong> {{ boutique.nom }}</li>
+            </ul>
+        </div>
+        
+        <div class="info-section">
+            <div class="info-title">👤 Votre compte SuperAdmin :</div>
+            <ul>
+                <li><strong>Nom d'utilisateur :</strong> {{ user.username }}</li>
+                <li><strong>Email :</strong> {{ user.email }}</li>
+                <li><strong>Rôle :</strong> Super Administrateur</li>
+                <li><strong>Entrepôt assigné :</strong> {{ boutique.nom }}</li>
+            </ul>
+        </div>
+        
+        <div class="next-steps">
+            <h3>🚀 Prochaines étapes :</h3>
+            
+            <div class="step">
+                <strong>1. Connexion à votre compte</strong><br>
+                Connectez-vous avec vos identifiants pour accéder à votre tableau de bord.
+            </div>
+            
+            <div class="step">
+                <strong>2. Configuration de votre entrepôt</strong><br>
+                Ajoutez vos premiers produits et configurez votre stock.
+            </div>
+            
+            <div class="step">
+                <strong>3. Création d'utilisateurs</strong><br>
+                Invitez vos employés et assignez-les à des entrepôts spécifiques.
+            </div>
+            
+            <div class="step">
+                <strong>4. Formation et support</strong><br>
+                Consultez notre documentation et contactez notre équipe si nécessaire.
+            </div>
+        </div>
+        
+        <div style="text-align: center;">
+            <a href="http://localhost:3000/connexion" class="cta-button">
+                Se connecter maintenant
+            </a>
+        </div>
+        
+        <div class="info-section">
+            <div class="info-title">📞 Support et assistance :</div>
+            <p>Notre équipe est là pour vous accompagner :</p>
+            <ul>
+                <li><strong>Email :</strong> wilfriedtayou6@gmail.com</li>
+                <li><strong>Téléphone :</strong> +237 6XX XX XX XX</li>
+                <li><strong>Horaires :</strong> Lundi - Vendredi, 8h00 - 18h00</li>
+            </ul>
+        </div>
+        
+        <p>Merci de nous faire confiance pour la gestion de votre stock. Nous sommes ravis de vous accompagner dans la croissance de votre entreprise !</p>
+        
+        <div class="footer">
+            <p><strong>L'équipe StoRage</strong></p>
+            <p>© 2025 StoRage. Tous droits réservés. by mura</p>
+            <p>Conçu par durel-tayou</p>
+        </div>
+    </div>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

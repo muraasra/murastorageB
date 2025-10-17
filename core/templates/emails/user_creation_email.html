@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bienvenue sur StoRage</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 16px;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        .welcome-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .welcome-section h2 {
+            color: #1f2937;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        .welcome-section p {
+            color: #6b7280;
+            font-size: 16px;
+        }
+        .info-card {
+            background-color: #f3f4f6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 4px solid #10b981;
+        }
+        .info-card h3 {
+            color: #1f2937;
+            margin: 0 0 15px 0;
+            font-size: 18px;
+        }
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        .info-label {
+            font-weight: 600;
+            color: #374151;
+        }
+        .info-value {
+            color: #6b7280;
+        }
+        .credentials-section {
+            background-color: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .credentials-section h3 {
+            color: #92400e;
+            margin: 0 0 15px 0;
+            font-size: 18px;
+        }
+        .credential-item {
+            background-color: #ffffff;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #d1d5db;
+        }
+        .credential-label {
+            font-weight: 600;
+            color: #374151;
+            font-size: 14px;
+        }
+        .credential-value {
+            color: #1f2937;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            margin-top: 5px;
+            word-break: break-all;
+        }
+        .login-section {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .login-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            text-decoration: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            transition: transform 0.2s;
+        }
+        .login-button:hover {
+            transform: translateY(-2px);
+        }
+        .security-notice {
+            background-color: #fef2f2;
+            border: 1px solid #f87171;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .security-notice h3 {
+            color: #dc2626;
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        .security-notice p {
+            color: #7f1d1d;
+            margin: 0;
+            font-size: 14px;
+        }
+        .footer {
+            background-color: #f9fafb;
+            padding: 20px 30px;
+            text-align: center;
+            border-top: 1px solid #e5e7eb;
+        }
+        .footer p {
+            color: #6b7280;
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        .footer a {
+            color: #10b981;
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🎉 Bienvenue sur StoRage</h1>
+            <p>Votre compte a été créé avec succès</p>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <!-- Welcome Section -->
+            <div class="welcome-section">
+                <h2>Bonjour {{ user.first_name }} {{ user.last_name }} !</h2>
+                <p>Votre administrateur vous a créé un compte sur la plateforme StoRage pour gérer efficacement les stocks de votre entreprise.</p>
+            </div>
+
+            <!-- Company Information -->
+            <div class="info-card">
+                <h3>📋 Informations de votre entreprise</h3>
+                <div class="info-item">
+                    <span class="info-label">Entreprise :</span>
+                    <span class="info-value">{{ entreprise.nom }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Secteur :</span>
+                    <span class="info-value">{{ entreprise.secteur_activite }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Ville :</span>
+                    <span class="info-value">{{ entreprise.ville }}</span>
+                </div>
+                {% if boutique %}
+                <div class="info-item">
+                    <span class="info-label">Entrepôt assigné :</span>
+                    <span class="info-value">{{ boutique.nom }} - {{ boutique.ville }}</span>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Login Credentials -->
+            <div class="credentials-section">
+                <h3>🔐 Vos identifiants de connexion</h3>
+                <div class="credential-item">
+                    <div class="credential-label">Adresse e-mail :</div>
+                    <div class="credential-value">{{ user.email }}</div>
+                </div>
+                <div class="credential-item">
+                    <div class="credential-label">Mot de passe temporaire :</div>
+                    <div class="credential-value">{{ temp_password }}</div>
+                </div>
+            </div>
+
+            <!-- Security Notice -->
+            <div class="security-notice">
+                <h3>⚠️ Important - Sécurité</h3>
+                <p>Ce mot de passe est temporaire. Nous vous recommandons fortement de le changer lors de votre première connexion pour des raisons de sécurité.</p>
+            </div>
+
+            <!-- Login Button -->
+            <div class="login-section">
+                <a href="{{ login_url }}" class="login-button">
+                    🚀 Se connecter maintenant
+                </a>
+                <p style="margin-top: 15px; color: #6b7280; font-size: 14px;">
+                    Ce lien vous dirigera automatiquement vers la page de connexion avec votre ID entreprise pré-rempli.
+                </p>
+            </div>
+
+            <!-- Additional Information -->
+            <div class="info-card">
+                <h3>💡 Prochaines étapes</h3>
+                <ul style="color: #374151; margin: 0; padding-left: 20px;">
+                    <li>Cliquez sur le bouton de connexion ci-dessus</li>
+                    <li>Connectez-vous avec vos identifiants</li>
+                    <li>Changez votre mot de passe temporaire</li>
+                    <li>Explorez les fonctionnalités de gestion de stock</li>
+                    <li>Contactez votre administrateur si vous avez des questions</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p><strong>{{ site_name }}</strong> - Plateforme de gestion de stock</p>
+            <p>Si vous avez des questions, contactez votre administrateur système.</p>
+            <p>© 2025 StoRage. Tous droits réservés.</p>
+        </div>
+    </div>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

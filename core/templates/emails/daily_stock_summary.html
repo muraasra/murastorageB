@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Résumé Quotidien des Stocks - {{ site_name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+        }
+        .content {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 0 0 10px 10px;
+        }
+        .summary-box {
+            background: white;
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border-left: 4px solid;
+        }
+        .stat-normal { border-left-color: #27ae60; }
+        .stat-low { border-left-color: #f39c12; }
+        .stat-out { border-left-color: #e74c3c; }
+        .stat-total { border-left-color: #3498db; }
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+        }
+        .button {
+            display: inline-block;
+            background: #3498db;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 Résumé Quotidien des Stocks</h1>
+        <h2>{{ entreprise.nom }} - {{ summary_date }}</h2>
+    </div>
+    
+    <div class="content">
+        <p>Bonjour {{ superadmin.first_name }},</p>
+        
+        <p>Voici le résumé quotidien de vos stocks pour l'entreprise <strong>{{ entreprise.nom }}</strong>.</p>
+        
+        <div class="summary-box">
+            <h3>📈 Vue d'ensemble</h3>
+            <div class="stats-grid">
+                <div class="stat-card stat-total">
+                    <div class="stat-number">{{ total_products }}</div>
+                    <div class="stat-label">Total Produits</div>
+                </div>
+                <div class="stat-card stat-normal">
+                    <div class="stat-number">{{ normal_stocks }}</div>
+                    <div class="stat-label">Stock Normal</div>
+                </div>
+                <div class="stat-card stat-low">
+                    <div class="stat-number">{{ low_stocks }}</div>
+                    <div class="stat-label">Stock Faible</div>
+                </div>
+                <div class="stat-card stat-out">
+                    <div class="stat-number">{{ out_of_stocks }}</div>
+                    <div class="stat-label">En Rupture</div>
+                </div>
+            </div>
+        </div>
+        
+        {% if low_stocks > 0 or out_of_stocks > 0 %}
+        <div class="summary-box">
+            <h3>⚠️ Alertes Actives</h3>
+            {% if out_of_stocks > 0 %}
+            <p style="color: #e74c3c; font-weight: bold;">
+                🚨 {{ out_of_stocks }} produit(s) en rupture totale - Action immédiate requise
+            </p>
+            {% endif %}
+            {% if low_stocks > 0 %}
+            <p style="color: #f39c12; font-weight: bold;">
+                ⚠️ {{ low_stocks }} produit(s) avec stock faible - Réapprovisionnement recommandé
+            </p>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="summary-box">
+            <h3>✅ Tous les stocks sont normaux</h3>
+            <p style="color: #27ae60; font-weight: bold;">
+                Excellente gestion des stocks ! Aucune alerte active.
+            </p>
+        </div>
+        {% endif %}
+        
+        <div class="summary-box">
+            <h3>📋 Recommandations</h3>
+            <ul>
+                {% if out_of_stocks > 0 %}
+                <li>🚨 <strong>Commander immédiatement</strong> les produits en rupture</li>
+                {% endif %}
+                {% if low_stocks > 0 %}
+                <li>📦 <strong>Planifier le réapprovisionnement</strong> des stocks faibles</li>
+                {% endif %}
+                <li>📊 <strong>Analyser les tendances</strong> de consommation</li>
+                <li>⚙️ <strong>Ajuster les stocks minimums</strong> si nécessaire</li>
+                <li>🔄 <strong>Optimiser</strong> vos processus de commande</li>
+            </ul>
+        </div>
+        
+        <div style="text-align: center;">
+            <a href="{{ site_url }}/stocks" class="button">Consulter mes stocks</a>
+        </div>
+        
+        <p>Ce résumé quotidien vous aide à maintenir une gestion optimale de vos stocks.</p>
+        
+        <p>Cordialement,<br>
+        L'équipe {{ site_name }}</p>
+    </div>
+    
+    <div class="footer">
+        <p>{{ site_name }} - Gestion de stock simplifiée</p>
+        <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
+    </div>
+</body>
+</html>
+
+
+
+
+
+
+
+

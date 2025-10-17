@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alerte de limite - {{ site_name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+        }
+        .content {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 0 0 10px 10px;
+        }
+        .alert-box {
+            background: {% if data.warning_level == 'critical' %}#ffebee{% else %}#fff3cd{% endif %};
+            border: 1px solid {% if data.warning_level == 'critical' %}#f44336{% else %}#ff9800{% endif %};
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .progress-bar {
+            background: #e0e0e0;
+            border-radius: 10px;
+            height: 20px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        .progress-fill {
+            background: {% if data.warning_level == 'critical' %}#f44336{% else %}#ff9800{% endif %};
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
+        .button {
+            display: inline-block;
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{% if data.warning_level == 'critical' %}🚨 Alerte critique{% else %}⚠️ Avertissement{% endif %}</h1>
+        <h2>Limite de {{ data.resource_type }} atteinte</h2>
+    </div>
+    
+    <div class="content">
+        <p>Bonjour {{ superadmin.first_name }},</p>
+        
+        <p>Nous vous informons que votre entreprise <strong>{{ entreprise.nom }}</strong> a atteint {% if data.warning_level == 'critical' %}95%{% else %}80%{% endif %} de sa limite pour les <strong>{{ data.resource_type }}</strong>.</p>
+        
+        <div class="alert-box">
+            <h3>{% if data.warning_level == 'critical' %}🚨 CRITIQUE{% else %}⚠️ ATTENTION{% endif %}</h3>
+            <p><strong>{{ data.current }} / {{ data.limit }} {{ data.resource_type }}</strong></p>
+            <p>Utilisation: {{ data.percentage|floatformat:1 }}%</p>
+            
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {{ data.percentage }}%"></div>
+            </div>
+            
+            {% if data.warning_level == 'critical' %}
+            <p><strong>Vous ne pourrez plus créer de nouveaux {{ data.resource_type }} !</strong></p>
+            {% else %}
+            <p><strong>Vous approchez de la limite de votre plan.</strong></p>
+            {% endif %}
+        </div>
+        
+        <h3>Solutions recommandées :</h3>
+        <ul>
+            <li>✅ <strong>Mettre à niveau votre plan</strong> pour augmenter vos limites</li>
+            <li>✅ <strong>Optimiser votre utilisation</strong> en supprimant les éléments inutiles</li>
+            <li>✅ <strong>Contacter notre support</strong> pour des conseils personnalisés</li>
+        </ul>
+        
+        <div style="text-align: center;">
+            <a href="{{ site_url }}/abonnement" class="button">Mettre à niveau mon plan</a>
+        </div>
+        
+        <p>N'hésitez pas à nous contacter si vous avez des questions ou besoin d'aide.</p>
+        
+        <p>Cordialement,<br>
+        L'équipe {{ site_name }}</p>
+    </div>
+    
+    <div class="footer">
+        <p>{{ site_name }} - Gestion de stock simplifiée</p>
+        <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
+    </div>
+</body>
+</html>
+
+
+
+
+
+
+
+
