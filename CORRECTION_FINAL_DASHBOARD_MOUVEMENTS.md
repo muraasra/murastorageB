@@ -177,3 +177,6 @@ if (Array.isArray(mouvementsData.value)) {
 4. **Données de test** : Créer plus de données de test pour les différents scénarios
 
 **Le système est maintenant stable, performant et prêt pour la production !** 🎉
+
+
+

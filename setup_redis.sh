@@ -126,3 +126,6 @@ echo "   - Arrêter Redis: redis-cli shutdown"
 echo "   - Monitorer Redis: redis-cli monitor"
 echo "   - Statistiques: redis-cli info stats"
 
+
+
+

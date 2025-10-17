@@ -237,3 +237,6 @@ class Command(BaseCommand):
         else:
             self.stdout.write("❌ Le système nécessite des optimisations supplémentaires")
 
+
+
+

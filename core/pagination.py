@@ -155,3 +155,6 @@ class SmartPagination(OptimizedPageNumberPagination):
         
         return default_size
 
+
+
+

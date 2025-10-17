@@ -142,3 +142,6 @@ const data = ref<any[]>([]) // Au lieu de ref<any[]>()
 - ✅ **Expérience utilisateur** améliorée
 
 **Le système est maintenant stable et prêt pour la production !** 🎉
+
+
+

@@ -200,3 +200,6 @@ class CacheManager:
         cache_key = f"stocks_entrepot_{entrepot_id}"
         cache.delete(cache_key)
 
+
+
+

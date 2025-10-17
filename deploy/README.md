@@ -80,3 +80,6 @@ application = get_wsgi_application()
 - [ ] Premier déploiement réussi
 
 **🎉 Votre application est déployée !**
+
+
+

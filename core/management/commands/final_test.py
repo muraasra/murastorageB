@@ -249,3 +249,6 @@ class Command(BaseCommand):
         
         self.stdout.write("\n🚀 SYSTÈME PRÊT POUR LA PRODUCTION!")
 
+
+
+

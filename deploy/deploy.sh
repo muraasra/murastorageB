@@ -4,8 +4,8 @@
 echo "🚀 Déploiement sur PythonAnywhere..."
 
 # Variables (à modifier selon votre configuration)
-PROJECT_DIR="/home/yourusername/walner-durel/Backend"
-VENV_DIR="/home/yourusername/.virtualenvs/walner-durel"
+PROJECT_DIR="/home/murastorage/walner-durel/Backend"
+VENV_DIR="/home/murastorage/.virtualenvs/walner-durel"
 
 # Se déplacer dans le répertoire du projet
 cd "$PROJECT_DIR"
@@ -35,4 +35,4 @@ echo "🔄 Redémarrage de l'application..."
 touch storage/wsgi.py
 
 echo "✅ Déploiement terminé !"
-echo "🌐 Application: https://yourusername.pythonanywhere.com"
+echo "🌐 Application: https://murastorage.pythonanywhere.com"

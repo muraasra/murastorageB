@@ -262,3 +262,6 @@ class Command(BaseCommand):
         except Exception as e:
             self.stdout.write(f"  ❌ Erreur test requêtes: {str(e)}")
 
+
+
+

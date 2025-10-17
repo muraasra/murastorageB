@@ -142,3 +142,6 @@ application = get_wsgi_application()
 **🎉 Votre déploiement automatique est configuré !**
 
 Maintenant, à chaque push sur `main`, votre application se déploie automatiquement sur PythonAnywhere.
+
+
+

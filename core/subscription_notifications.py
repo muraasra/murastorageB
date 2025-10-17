@@ -319,3 +319,6 @@ def process_subscription_change(entreprise, new_plan_id, change_type='upgrade'):
 
 
 
+
+
+

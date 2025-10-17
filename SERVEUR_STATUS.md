@@ -120,3 +120,6 @@ CACHES = {
 
 **Le système peut maintenant supporter la charge demandée de 100 utilisateurs avec 20 requêtes/minute chacun !**
 
+
+
+

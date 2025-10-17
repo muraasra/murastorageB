@@ -4,7 +4,7 @@ import os
 import sys
 
 # Ajouter le chemin du projet
-path = '/home/yourusername/walner-durel/Backend'
+path = '/home/murastorage/walner-durel/Backend'
 if path not in sys.path:
     sys.path.append(path)
 
