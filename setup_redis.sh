@@ -129,3 +129,6 @@ echo "   - Statistiques: redis-cli info stats"
 
 
 
+
+
+
