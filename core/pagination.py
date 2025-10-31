@@ -161,3 +161,16 @@ class SmartPagination(OptimizedPageNumberPagination):
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+

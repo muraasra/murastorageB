@@ -74,9 +74,16 @@ def invalidate_cache_pattern(pattern: str):
         pattern: Pattern de clé à invalider (ex: 'api:produits:*')
     """
     try:
-        # Pour Redis, on peut utiliser des patterns
         from django.core.cache import cache
-        cache.delete_pattern(pattern)
+        
+        # Pour LocMemCache, on ne peut pas utiliser delete_pattern
+        # On doit vider tout le cache ou utiliser une approche différente
+        if hasattr(cache, 'delete_pattern'):
+            cache.delete_pattern(pattern)
+        else:
+            # Pour cache local, on vide tout le cache
+            # C'est une solution simple mais efficace pour le développement
+            cache.clear()
     except Exception as e:
         print(f"Erreur lors de l'invalidation du cache: {e}")
 
@@ -176,6 +183,9 @@ class CacheManager:
         """Invalide le cache des produits d'une entreprise"""
         cache_key = f"produits_entreprise_{entreprise_id}"
         cache.delete(cache_key)
+        # Invalider aussi les réponses list() décorées avec cache_api_response
+        # Cela couvre les clés du type "produits:user_<id>:params_<hash>:entreprise_<id>:_api_produits_"
+        invalidate_cache_pattern('produits')
     
     @staticmethod
     def get_stocks_by_entrepot(entrepot_id: int, timeout: int = 180):
@@ -199,6 +209,29 @@ class CacheManager:
         """Invalide le cache des stocks d'un entrepôt"""
         cache_key = f"stocks_entrepot_{entrepot_id}"
         cache.delete(cache_key)
+
+    @staticmethod
+    def invalidate_api_prefix(prefix: str):
+        """Invalide les caches générés par cache_api_response pour un préfixe donné."""
+        try:
+            # Tenter avec wildcard (Redis) puis fallback simple
+            invalidate_cache_pattern(f"{prefix}:*")
+            invalidate_cache_pattern(prefix)
+        except Exception as e:
+            print(f"Erreur lors de l'invalidation du préfixe {prefix}: {e}")
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

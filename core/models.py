@@ -1,9 +1,9 @@
-from django.db import models
+from django.db import models, transaction
 from django.contrib.auth.models import AbstractUser
 from django.utils.timezone import now  # Import this at the top
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 import string
 import random
@@ -221,6 +221,10 @@ class Produit(models.Model):
     categorie = models.ForeignKey(Categorie, on_delete=models.SET_NULL, null=True, blank=True, related_name='produits')
     entreprise = models.ForeignKey(Entreprise, on_delete=models.CASCADE, related_name='produits', null=True, blank=True)
     fournisseur_principal = models.ForeignKey(Fournisseur, on_delete=models.SET_NULL, null=True, blank=True, related_name='produits')
+    
+    # Nouveaux champs
+    emplacement = models.CharField(max_length=200, blank=True, null=True, help_text="Emplacement physique du produit dans l'entrepôt")
+    details = models.JSONField(default=dict, blank=True, help_text="Détails supplémentaires sous forme de JSON (clé-valeur)")
     
     # Image
     image = models.ImageField(upload_to='produits/images/', blank=True, null=True, help_text="Image du produit")
@@ -756,10 +760,16 @@ class SubscriptionPlan(models.Model):
     max_entreprises = models.IntegerField(default=1)
     max_boutiques = models.IntegerField(default=1)
     max_users = models.IntegerField(default=2)
-    max_produits = models.IntegerField(default=50, null=True, blank=True)  # null = illimité
-    max_factures_per_month = models.IntegerField(default=100, null=True, blank=True)  # null = illimité
+    max_produits = models.IntegerField(default=50, null=True, blank=True)  # null = illimité, 999999 = illimité (pour compatibility)
+    max_factures_per_month = models.IntegerField(default=100, null=True, blank=True)  # null = illimité, 999999 = illimité
+    max_inventaires_per_month = models.IntegerField(default=0, null=True, blank=True)  # 0 = aucun
+    max_transfers_per_month = models.IntegerField(default=0, null=True, blank=True)  # 0 = aucun
     
     # Fonctionnalités
+    allow_inventory = models.BooleanField(default=False, help_text="Permet les inventaires")
+    allow_transfers = models.BooleanField(default=False, help_text="Permet les transferts inter-entrepôts")
+    allow_barcode_generation = models.BooleanField(default=False, help_text="Génération de codes-barres")
+    allow_partners = models.BooleanField(default=False, help_text="Gestion des partenaires (clients/fournisseurs)")
     allow_export_csv = models.BooleanField(default=False)
     allow_export_excel = models.BooleanField(default=False)
     allow_import_csv = models.BooleanField(default=False)
@@ -767,6 +777,14 @@ class SubscriptionPlan(models.Model):
     allow_multiple_entreprises = models.BooleanField(default=False)
     allow_advanced_analytics = models.BooleanField(default=False)
     allow_custom_branding = models.BooleanField(default=False)
+    
+    # Niveaux d'alertes
+    alert_level = models.CharField(max_length=20, choices=[
+        ('none', 'Aucune'),
+        ('simple', 'Simple - seuil par produit'),
+        ('advanced', 'Avancé - multi-seuils + emails'),
+        ('multi_warehouse', 'Multi-entrepôts'),
+    ], default='none')
     
     # Support
     support_level = models.CharField(max_length=20, choices=[
@@ -810,10 +828,17 @@ class EntrepriseSubscription(models.Model):
     end_date = models.DateTimeField(null=True, blank=True)
     trial_end_date = models.DateTimeField(null=True, blank=True)
     
+    # Période de facturation
+    billing_period = models.CharField(max_length=10, choices=[
+        ('monthly', 'Mensuel'),
+        ('yearly', 'Annuel'),
+    ], default='monthly')
+    
     # Informations de paiement
     payment_method = models.CharField(max_length=50, blank=True)
     last_payment_date = models.DateTimeField(null=True, blank=True)
     next_payment_date = models.DateTimeField(null=True, blank=True)
+    auto_renew = models.BooleanField(default=True, help_text="Renouvellement automatique")
     
     # Métadonnées
     created_at = models.DateTimeField(auto_now_add=True)
@@ -849,6 +874,35 @@ class EntrepriseSubscription(models.Model):
             return 0
         delta = self.trial_end_date - timezone.now()
         return delta.days
+    
+    def extend_subscription(self, days=30):
+        """Prolonger l'abonnement de X jours"""
+        if self.end_date:
+            self.end_date = self.end_date + timedelta(days=days)
+        else:
+            self.end_date = timezone.now() + timedelta(days=days)
+        self.save()
+        return self.end_date
+    
+    def get_price(self):
+        """Obtenir le prix selon la période de facturation"""
+        if self.billing_period == 'yearly':
+            # Réduction de 10% pour l'annuel
+            return float(self.plan.price_yearly) * 0.9
+        return float(self.plan.price_monthly)
+    
+    def get_days_until_expiry(self):
+        """Obtenir le nombre de jours avant expiration"""
+        if not self.end_date:
+            return None
+        delta = self.end_date - timezone.now()
+        return delta.days if delta.days > 0 else 0
+    
+    def apply_yearly_discount(self):
+        """Appliquer la réduction annuelle de 10%"""
+        if self.billing_period == 'yearly':
+            return self.plan.price_yearly * 0.9
+        return self.plan.price_monthly
 
 class UsageTracking(models.Model):
     """Modèle pour suivre l'utilisation des ressources par entreprise"""
@@ -947,3 +1001,240 @@ class EmailVerification(models.Model):
         """Marquer comme expiré"""
         self.status = 'expired'
         self.save()
+
+
+# ==================== MODÈLES D'INVENTAIRE ====================
+
+class Inventaire(models.Model):
+    """Modèle pour gérer les inventaires physiques"""
+    
+    STATUT_CHOICES = [
+        ('planifie', 'Planifié'),
+        ('en_cours', 'En cours'),
+        ('termine', 'Terminé'),
+        ('annule', 'Annulé'),
+    ]
+    
+    # Informations de base
+    numero = models.CharField(max_length=50, unique=True, help_text="Numéro unique de l'inventaire")
+    nom = models.CharField(max_length=200, help_text="Nom/Description de l'inventaire")
+    description = models.TextField(blank=True, help_text="Description détaillée")
+    
+    # Relations
+    entreprise = models.ForeignKey(Entreprise, on_delete=models.CASCADE, related_name='inventaires', null=True, blank=True)
+    entrepot = models.ForeignKey(Boutique, on_delete=models.CASCADE, related_name='inventaires')
+    
+    # Dates
+    date_debut = models.DateTimeField(help_text="Date de début prévue")
+    date_fin_prevue = models.DateTimeField(help_text="Date de fin prévue")
+    date_fin_reelle = models.DateTimeField(null=True, blank=True, help_text="Date de fin réelle")
+    
+    # Statut
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='planifie')
+    
+    # Personne responsable
+    responsable = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='inventaires')
+    
+    # Indicateur d'ajustement
+    stocks_ajustes = models.BooleanField(default=False, help_text="Indique si les stocks ont été ajustés suite à cet inventaire")
+    date_ajustement = models.DateTimeField(null=True, blank=True, help_text="Date de l'ajustement des stocks")
+    
+    # Statistiques
+    total_produits = models.IntegerField(default=0, help_text="Nombre total de produits à inventorier")
+    produits_comptes = models.IntegerField(default=0, help_text="Nombre de produits déjà comptés")
+    ecarts_trouves = models.IntegerField(default=0, help_text="Nombre d'écarts trouvés")
+    
+    # Métadonnées
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='inventaires_crees')
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Inventaire"
+        verbose_name_plural = "Inventaires"
+        indexes = [
+            models.Index(fields=['entreprise']),
+            models.Index(fields=['entrepot']),
+            models.Index(fields=['statut']),
+            models.Index(fields=['date_debut']),
+            models.Index(fields=['statut', 'date_debut']),
+            models.Index(fields=['entrepot', 'statut']),
+        ]
+    
+    def __str__(self):
+        return f"Inventaire {self.numero} - {self.entrepot.nom} ({self.get_statut_display()})"
+    
+    def get_progression(self):
+        """Retourne le pourcentage de progression"""
+        if self.total_produits == 0:
+            return 0
+        return int((self.produits_comptes / self.total_produits) * 100)
+    
+    def is_completed(self):
+        """Vérifie si l'inventaire est terminé"""
+        return self.statut == 'termine'
+    
+    def can_be_started(self):
+        """Vérifie si l'inventaire peut être démarré"""
+        return self.statut == 'planifie'
+    
+    def mark_as_started(self):
+        """Marquer l'inventaire comme démarré"""
+        if self.can_be_started():
+            self.statut = 'en_cours'
+            self.save()
+    
+    def mark_as_completed(self):
+        """Marquer l'inventaire comme terminé"""
+        if self.statut == 'en_cours':
+            self.statut = 'termine'
+            self.date_fin_reelle = timezone.now()
+            self.save()
+    
+    def ajuster_stocks(self, utilisateur):
+        """
+        Ajuster les stocks réels en fonction des écarts trouvés lors de l'inventaire
+        Cette méthode:
+        1. Met à jour les quantités dans la table Stock
+        2. Crée des mouvements de stock pour tracer les ajustements
+        3. Empêche l'ajustement multiple
+        """
+        if self.stocks_ajustes:
+            return {'error': 'Les stocks ont déjà été ajustés pour cet inventaire'}
+        
+        if self.statut != 'en_cours':
+            return {'error': 'Cet inventaire doit être en cours pour ajuster les stocks'}
+        
+        ajustements_faits = 0
+        mouvements_crees = 0
+        
+        try:
+            with transaction.atomic():
+                for produit_inventaire in self.produits.filter(est_compte=True, quantite_reelle__isnull=False):
+                    produit = produit_inventaire.produit
+                    quantite_theorique = produit_inventaire.quantite_theorique
+                    quantite_reelle = produit_inventaire.quantite_reelle
+                
+                    # Calculer et sauvegarder l'écart si nécessaire
+                    ecart = produit_inventaire.calculer_ecart()
+                    if ecart is not None:
+                        produit_inventaire.save()  # Sauvegarder l'écart calculé
+                    
+                    # S'assurer que l'écart est un entier valide
+                    ecart_val = int(ecart) if ecart is not None else 0
+                    
+                    # Mettre à jour le stock dans l'entrepôt de l'inventaire
+                    stock, created = Stock.objects.get_or_create(
+                        produit=produit,
+                        entrepot=self.entrepot,
+                        defaults={'quantite': 0}  # Valeur par défaut si création
+                    )
+                    
+                    quantite_avant = stock.quantite  # Sauvegarder AVANT la modification
+                    stock.quantite = quantite_reelle
+                    stock.save()
+                    
+                    # Créer un mouvement de stock pour tracer l'ajustement
+                    MouvementStock.objects.create(
+                        produit=produit,
+                        entrepot=self.entrepot,
+                        type_mouvement='ajustement',
+                        quantite=abs(ecart_val),
+                        quantite_avant=quantite_avant,  # Quantité AVANT l'ajustement
+                        quantite_apres=quantite_reelle,
+                        reference_document=f'Inventaire {self.numero}',
+                        motif=f'Ajustement suite à inventaire: {self.nom}. Écart: {"+" if ecart_val > 0 else ""}{ecart_val}',
+                        utilisateur=utilisateur
+                    )
+                
+                    ajustements_faits += 1
+                    mouvements_crees += 1
+                
+                # Marquer comme ajusté
+                self.stocks_ajustes = True
+                self.date_ajustement = timezone.now()
+                self.save()
+        
+        except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            print(f"ERREUR dans ajuster_stocks pour inventaire {self.id}:")
+            print(f"Erreur: {str(e)}")
+            print(f"Traceback:\n{error_trace}")
+            raise
+        
+        return {
+            'success': True,
+            'ajustements_faits': ajustements_faits,
+            'mouvements_crees': mouvements_crees,
+            'message': f'{ajustements_faits} produit(s) ajusté(s) avec succès'
+        }
+
+
+class InventaireProduit(models.Model):
+    """Modèle pour les produits d'un inventaire"""
+    
+    inventaire = models.ForeignKey(Inventaire, on_delete=models.CASCADE, related_name='produits')
+    produit = models.ForeignKey(Produit, on_delete=models.CASCADE, related_name='inventaires')
+    
+    # Quantités
+    quantite_theorique = models.IntegerField(help_text="Quantité théorique enregistrée dans le système")
+    quantite_reelle = models.IntegerField(null=True, blank=True, help_text="Quantité réellement comptée")
+    
+    # Calcul de l'écart
+    ecart = models.IntegerField(default=0, help_text="Différence entre théorique et réel (réel - théorique)")
+    
+    # Informations supplémentaires
+    commentaire = models.TextField(blank=True, help_text="Commentaire sur l'écart si nécessaire")
+    date_comptage = models.DateTimeField(null=True, blank=True, help_text="Date et heure du comptage")
+    compteur = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='produits_comptes')
+    
+    # Statut de comptage
+    est_compte = models.BooleanField(default=False, help_text="Indique si ce produit a été compté")
+    
+    # Métadonnées
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ['inventaire', 'produit']
+        verbose_name = "Produit d'inventaire"
+        verbose_name_plural = "Produits d'inventaire"
+        indexes = [
+            models.Index(fields=['inventaire']),
+            models.Index(fields=['produit']),
+            models.Index(fields=['inventaire', 'produit']),
+            models.Index(fields=['est_compte']),
+            models.Index(fields=['inventaire', 'est_compte']),
+        ]
+    
+    def __str__(self):
+        return f"{self.produit.nom} - Quantité: {self.quantite_theorique} / {self.quantite_reelle}"
+    
+    def calculer_ecart(self):
+        """Calculer l'écart entre la quantité théorique et réelle"""
+        if self.quantite_reelle is not None:
+            self.ecart = self.quantite_reelle - self.quantite_theorique
+            return self.ecart
+        return None
+    
+    def marquer_compte(self, quantite_reelle, utilisateur, commentaire=''):
+        """Marquer le produit comme compté avec la quantité réelle"""
+        self.quantite_reelle = quantite_reelle
+        self.ecart = self.calculer_ecart()
+        self.commentaire = commentaire
+        self.est_compte = True
+        self.date_comptage = timezone.now()
+        self.compteur = utilisateur
+        self.save()
+        
+        # Mettre à jour le compteur de l'inventaire parent
+        inventaire = self.inventaire
+        inventaire.produits_comptes += 1
+        
+        # Si c'est le premier écart, l'incrémenter
+        if self.ecart != 0:
+            inventaire.ecarts_trouves += 1
+        
+        inventaire.save()

@@ -181,26 +181,27 @@ def check_and_send_trial_warnings(entreprise):
         # Calculer les jours restants
         days_remaining = (trial_end - now).days
         
-        # Envoyer des avertissements à 7 jours, 3 jours et 1 jour
-        if days_remaining == 7:
+        # Envoyer des avertissements à 7 jours, 3 jours et 1 jour (ou moins)
+        # Utiliser des plages pour éviter de manquer les notifications
+        if 6 <= days_remaining <= 8:  # ~7 jours
             send_subscription_notification_email(
                 entreprise, 
                 'trial_ending',
-                {'days_remaining': 7}
+                {'days_remaining': days_remaining}
             )
             return True
-        elif days_remaining == 3:
+        elif 2 <= days_remaining <= 4:  # ~3 jours
             send_subscription_notification_email(
                 entreprise, 
                 'trial_ending',
-                {'days_remaining': 3}
+                {'days_remaining': days_remaining}
             )
             return True
-        elif days_remaining == 1:
+        elif 0 <= days_remaining <= 1:  # ~1 jour ou moins
             send_subscription_notification_email(
                 entreprise, 
                 'trial_ending',
-                {'days_remaining': 1}
+                {'days_remaining': days_remaining}
             )
             return True
         
@@ -225,26 +226,30 @@ def check_and_send_subscription_expiry_warnings(entreprise):
         # Calculer les jours restants
         days_remaining = (end_date - now).days
         
-        # Envoyer des avertissements à 30 jours, 7 jours et 1 jour
-        if days_remaining == 30:
+        # Vérifier si on a déjà envoyé une notification récemment (éviter les doublons)
+        # Utiliser une variable de suivi ou vérifier la dernière notification
+        
+        # Envoyer des avertissements à 30 jours, 7 jours et 1 jour (ou moins)
+        # Utiliser des plages pour éviter de manquer les notifications si la tâche ne s'exécute pas exactement le jour
+        if 29 <= days_remaining <= 31:  # ~30 jours
             send_subscription_notification_email(
                 entreprise, 
                 'subscription_expiring',
-                {'days_remaining': 30}
+                {'days_remaining': days_remaining}
             )
             return True
-        elif days_remaining == 7:
+        elif 6 <= days_remaining <= 8:  # ~7 jours
             send_subscription_notification_email(
                 entreprise, 
                 'subscription_expiring',
-                {'days_remaining': 7}
+                {'days_remaining': days_remaining}
             )
             return True
-        elif days_remaining == 1:
+        elif 0 <= days_remaining <= 2:  # ~1 jour ou moins
             send_subscription_notification_email(
                 entreprise, 
                 'subscription_expiring',
-                {'days_remaining': 1}
+                {'days_remaining': days_remaining}
             )
             return True
         
@@ -296,6 +301,12 @@ def process_subscription_change(entreprise, new_plan_id, change_type='upgrade'):
         
         subscription.save()
         
+        # Invalider les caches après changement de plan
+        from .cache_utils import CacheManager
+        CacheManager.invalidate_produits_cache(entreprise.id)
+        CacheManager.invalidate_api_prefix('subscriptions')
+        CacheManager.invalidate_api_prefix('produits')
+        
         # Envoyer l'email de notification
         send_subscription_notification_email(
             entreprise, 
@@ -311,6 +322,26 @@ def process_subscription_change(entreprise, new_plan_id, change_type='upgrade'):
         
     except Exception as e:
         return False, f"Erreur lors du changement: {str(e)}"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -17,6 +17,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .models import *
 from django.db.models.functions import TruncDate
 from .serializers import *
+from django.db import transaction
 from rest_framework import serializers
 from .permissions import *
 from .subscription_permissions import (
@@ -30,6 +31,8 @@ from .subscription_permissions import (
 )
 from .cache_utils import cache_api_response, CacheManager
 from .pagination import OptimizedPageNumberPagination, SmartPagination
+from .password_reset import PasswordResetManager
+from django.db import transaction
 import secrets
 import string
 
@@ -278,6 +281,29 @@ class UserViewSet(viewsets.ModelViewSet):
             print(f"Erreur envoi email: {e}")
             # Ne pas faire échouer la création d'utilisateur si l'email échoue
     
+    def perform_create(self, serializer):
+        user = serializer.save()
+        try:
+            CacheManager.invalidate_api_prefix('users')
+        except Exception as e:
+            print(f"Erreur invalidation cache users create: {e}")
+        return user
+
+    def perform_update(self, serializer):
+        user = serializer.save()
+        try:
+            CacheManager.invalidate_api_prefix('users')
+        except Exception as e:
+            print(f"Erreur invalidation cache users update: {e}")
+        return user
+
+    def perform_destroy(self, instance):
+        instance.delete()
+        try:
+            CacheManager.invalidate_api_prefix('users')
+        except Exception as e:
+            print(f"Erreur invalidation cache users destroy: {e}")
+    
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def inscription(self, request):
         """Endpoint pour l'inscription d'une nouvelle entreprise
@@ -491,6 +517,29 @@ class BoutiqueViewSet(viewsets.ModelViewSet):
             permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]
 
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        try:
+            CacheManager.invalidate_api_prefix('boutiques')
+        except Exception as e:
+            print(f"Erreur invalidation cache boutiques create: {e}")
+        return instance
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        try:
+            CacheManager.invalidate_api_prefix('boutiques')
+        except Exception as e:
+            print(f"Erreur invalidation cache boutiques update: {e}")
+        return instance
+
+    def perform_destroy(self, instance):
+        instance.delete()
+        try:
+            CacheManager.invalidate_api_prefix('boutiques')
+        except Exception as e:
+            print(f"Erreur invalidation cache boutiques destroy: {e}")
+
 # Catégorie : gestion des catégories de produits
 class CategorieViewSet(viewsets.ModelViewSet):
     queryset = Categorie.objects.all()
@@ -510,6 +559,39 @@ class CategorieViewSet(viewsets.ModelViewSet):
         
         return queryset.select_related('parent', 'entreprise')
 
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        try:
+            if instance.entreprise_id:
+                CacheManager.invalidate_produits_cache(instance.entreprise_id)
+            CacheManager.invalidate_api_prefix('categories')
+            CacheManager.invalidate_api_prefix('produits')
+        except Exception as e:
+            print(f"Erreur invalidation cache categories create: {e}")
+        return instance
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        try:
+            if instance.entreprise_id:
+                CacheManager.invalidate_produits_cache(instance.entreprise_id)
+            CacheManager.invalidate_api_prefix('categories')
+            CacheManager.invalidate_api_prefix('produits')
+        except Exception as e:
+            print(f"Erreur invalidation cache categories update: {e}")
+        return instance
+
+    def perform_destroy(self, instance):
+        entreprise_id = instance.entreprise_id
+        instance.delete()
+        try:
+            if entreprise_id:
+                CacheManager.invalidate_produits_cache(entreprise_id)
+            CacheManager.invalidate_api_prefix('categories')
+            CacheManager.invalidate_api_prefix('produits')
+        except Exception as e:
+            print(f"Erreur invalidation cache categories destroy: {e}")
+
 # Fournisseur : gestion des fournisseurs
 class FournisseurViewSet(viewsets.ModelViewSet):
     queryset = Fournisseur.objects.all()
@@ -528,6 +610,39 @@ class FournisseurViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(entreprise=self.request.user.entreprise)
         
         return queryset.select_related('entreprise')
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        try:
+            if instance.entreprise_id:
+                CacheManager.invalidate_produits_cache(instance.entreprise_id)
+            CacheManager.invalidate_api_prefix('fournisseurs')
+            CacheManager.invalidate_api_prefix('produits')
+        except Exception as e:
+            print(f"Erreur invalidation cache fournisseurs create: {e}")
+        return instance
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        try:
+            if instance.entreprise_id:
+                CacheManager.invalidate_produits_cache(instance.entreprise_id)
+            CacheManager.invalidate_api_prefix('fournisseurs')
+            CacheManager.invalidate_api_prefix('produits')
+        except Exception as e:
+            print(f"Erreur invalidation cache fournisseurs update: {e}")
+        return instance
+
+    def perform_destroy(self, instance):
+        entreprise_id = instance.entreprise_id
+        instance.delete()
+        try:
+            if entreprise_id:
+                CacheManager.invalidate_produits_cache(entreprise_id)
+            CacheManager.invalidate_api_prefix('fournisseurs')
+            CacheManager.invalidate_api_prefix('produits')
+        except Exception as e:
+            print(f"Erreur invalidation cache fournisseurs destroy: {e}")
 
 # Stock : gestion des stocks par entrepôt
 class StockViewSet(viewsets.ModelViewSet):
@@ -570,6 +685,47 @@ class StockViewSet(viewsets.ModelViewSet):
             'entrepot__entreprise__id', 'entrepot__entreprise__nom'
         )
 
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        # Invalider caches liés
+        try:
+            if instance.entrepot_id:
+                CacheManager.invalidate_stocks_cache(instance.entrepot_id)
+                if instance.entrepot and instance.entrepot.entreprise_id:
+                    CacheManager.invalidate_produits_cache(instance.entrepot.entreprise_id)
+            CacheManager.invalidate_api_prefix('stocks')
+            CacheManager.invalidate_api_prefix('produits')
+        except Exception as e:
+            print(f"Erreur invalidation cache stocks create: {e}")
+        return instance
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        try:
+            if instance.entrepot_id:
+                CacheManager.invalidate_stocks_cache(instance.entrepot_id)
+                if instance.entrepot and instance.entrepot.entreprise_id:
+                    CacheManager.invalidate_produits_cache(instance.entrepot.entreprise_id)
+            CacheManager.invalidate_api_prefix('stocks')
+            CacheManager.invalidate_api_prefix('produits')
+        except Exception as e:
+            print(f"Erreur invalidation cache stocks update: {e}")
+        return instance
+
+    def perform_destroy(self, instance):
+        entrepot_id = instance.entrepot_id
+        entreprise_id = instance.entrepot.entreprise_id if instance.entrepot else None
+        instance.delete()
+        try:
+            if entrepot_id:
+                CacheManager.invalidate_stocks_cache(entrepot_id)
+            if entreprise_id:
+                CacheManager.invalidate_produits_cache(entreprise_id)
+            CacheManager.invalidate_api_prefix('stocks')
+            CacheManager.invalidate_api_prefix('produits')
+        except Exception as e:
+            print(f"Erreur invalidation cache stocks destroy: {e}")
+
 # MouvementStock : historique des mouvements de stock
 class MouvementStockViewSet(viewsets.ModelViewSet):
     queryset = MouvementStock.objects.all()
@@ -595,7 +751,17 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """Associer automatiquement l'utilisateur connecté au mouvement"""
-        serializer.save(utilisateur=self.request.user)
+        mouvement = serializer.save(utilisateur=self.request.user)
+        # Invalidation des caches liés aux stocks et produits
+        try:
+            if mouvement.entrepot_id:
+                CacheManager.invalidate_stocks_cache(mouvement.entrepot_id)
+                if mouvement.entrepot and mouvement.entrepot.entreprise_id:
+                    CacheManager.invalidate_produits_cache(mouvement.entrepot.entreprise_id)
+            CacheManager.invalidate_api_prefix('stocks')
+            CacheManager.invalidate_api_prefix('produits')
+        except Exception as e:
+            print(f"Erreur invalidation cache mouvements: {e}")
     
     @action(detail=False, methods=['post'])
     def transfert_stock(self, request):
@@ -755,7 +921,8 @@ class ProduitViewSet(viewsets.ModelViewSet):
             'quantite', 'stock_minimum', 'stock_maximum', 'actif', 'created_at',
             'categorie__id', 'categorie__nom',
             'entreprise__id', 'entreprise__nom',
-            'fournisseur_principal__id', 'fournisseur_principal__nom'
+            'fournisseur_principal__id', 'fournisseur_principal__nom',
+            'emplacement', 'details'
         )
     
     def perform_create(self, serializer):
@@ -767,9 +934,16 @@ class ProduitViewSet(viewsets.ModelViewSet):
         return instance
     
     def perform_update(self, serializer):
-        """Mettre à jour un produit et invalider le cache"""
+        """Mettre à jour un produit et invalider le cache + PROTÉGER l'entreprise"""
+        # PROTECTION: Récupérer l'instance existante et forcer l'entreprise
+        instance = self.get_object()
+        
+        # Si l'entreprise a changé, la restaurer à sa valeur originale
+        if 'entreprise' in serializer.validated_data:
+            serializer.validated_data['entreprise'] = instance.entreprise
+        
+        # Sauvegarder et invalider le cache
         instance = serializer.save()
-        # Invalider le cache des produits de l'entreprise
         if instance.entreprise:
             CacheManager.invalidate_produits_cache(instance.entreprise.id)
         return instance
@@ -792,7 +966,12 @@ class ProduitViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         try:
-            instance = serializer.save()
+            # Forcer l'affectation à l'entreprise de l'utilisateur connecté
+            entreprise = getattr(self.request.user, 'entreprise', None)
+            if entreprise is None:
+                raise serializers.ValidationError({'entreprise': 'Aucune entreprise associée à l’utilisateur.'})
+
+            instance = serializer.save(entreprise=entreprise)
             create_journal_entry(
                 user=self.request.user,
                 type_operation='creation',
@@ -806,12 +985,21 @@ class ProduitViewSet(viewsets.ModelViewSet):
                     'quantite': instance.quantite
                 }
             )
+            # Invalider le cache des produits de l'entreprise et les listes
+            if instance.entreprise:
+                CacheManager.invalidate_produits_cache(instance.entreprise.id)
+            CacheManager.invalidate_api_prefix('produits')
         except Exception as e:
             print(f"Erreur lors de la création du produit: {str(e)}")
             raise
 
     def perform_update(self, serializer):
         try:
+            # PROTECTION: empêcher la modification de l'entreprise
+            current = self.get_object()
+            if 'entreprise' in serializer.validated_data:
+                serializer.validated_data['entreprise'] = current.entreprise
+
             instance = serializer.save()
             create_journal_entry(
                 user=self.request.user,
@@ -826,6 +1014,10 @@ class ProduitViewSet(viewsets.ModelViewSet):
                     'quantite': instance.quantite
                 }
             )
+            # Invalider le cache des produits de l'entreprise et les listes
+            if instance.entreprise:
+                CacheManager.invalidate_produits_cache(instance.entreprise.id)
+            CacheManager.invalidate_api_prefix('produits')
         except Exception as e:
             print(f"Erreur lors de la mise à jour du produit: {str(e)}")
             raise
@@ -1084,6 +1276,10 @@ class ClientViewSet(viewsets.ModelViewSet):
             serializer.save(entreprise=self.request.user.entreprise)
         else:
             serializer.save()
+        try:
+            CacheManager.invalidate_api_prefix('clients')
+        except Exception as e:
+            print(f"Erreur invalidation cache clients create: {e}")
     
     @action(detail=False, methods=['get'])
     def search_by_phone(self, request):
@@ -1137,6 +1333,10 @@ class FactureViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         instance = serializer.save()
+        try:
+            CacheManager.invalidate_api_prefix('factures')
+        except Exception as e:
+            print(f"Erreur invalidation cache factures create: {e}")
         create_journal_entry(
             user=self.request.user,
             type_operation='creation',
@@ -1153,6 +1353,10 @@ class FactureViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         instance = serializer.save()
+        try:
+            CacheManager.invalidate_api_prefix('factures')
+        except Exception as e:
+            print(f"Erreur invalidation cache factures update: {e}")
         create_journal_entry(
             user=self.request.user,
             type_operation='modification',
@@ -1388,3 +1592,362 @@ Ce client souhaite obtenir plus d'informations sur Mura Storage.
             'success': False,
             'error': 'Une erreur est survenue lors de l\'envoi de votre message. Veuillez réessayer.'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# ============== GESTION DE LA RÉINITIALISATION DE MOT DE PASSE ==============
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def request_password_reset(request):
+    """
+    Demande de réinitialisation de mot de passe
+    POST /api/password-reset/request/
+    """
+    try:
+        email = request.data.get('email')
+        
+        if not email:
+            return Response({
+                'success': False,
+                'error': 'Email requis'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Chercher l'utilisateur
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            # Pour des raisons de sécurité, on ne révèle pas si l'email existe ou non
+            return Response({
+                'success': True,
+                'message': 'Si cet email existe dans notre système, vous recevrez un lien de réinitialisation.'
+            }, status=status.HTTP_200_OK)
+        
+        # Générer le token
+        token = PasswordResetManager.generate_reset_token(user)
+        
+        # Envoyer l'email
+        email_sent = PasswordResetManager.send_reset_email(user, token)
+        
+        if email_sent:
+            return Response({
+                'success': True,
+                'message': 'Un email de réinitialisation a été envoyé à votre adresse.'
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'success': False,
+                'error': 'Erreur lors de l\'envoi de l\'email. Veuillez réessayer.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': 'Une erreur est survenue. Veuillez réessayer.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def confirm_password_reset(request):
+    """
+    Confirmation de réinitialisation de mot de passe
+    POST /api/password-reset/confirm/
+    """
+    try:
+        email = request.data.get('email')
+        token = request.data.get('token')
+        new_password = request.data.get('new_password')
+        
+        if not email or not token or not new_password:
+            return Response({
+                'success': False,
+                'error': 'Email, token et nouveau mot de passe sont requis'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Vérifier la validité du token
+        user = PasswordResetManager.verify_reset_token(token, email)
+        
+        if not user:
+            return Response({
+                'success': False,
+                'error': 'Token invalide ou expiré'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Vérifier la longueur du mot de passe
+        if len(new_password) < 8:
+            return Response({
+                'success': False,
+                'error': 'Le mot de passe doit contenir au moins 8 caractères'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Mettre à jour le mot de passe
+        user.set_password(new_password)
+        user.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Votre mot de passe a été réinitialisé avec succès. Vous pouvez maintenant vous connecter.'
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': 'Une erreur est survenue lors de la réinitialisation.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ==================== VIEWSETS D'INVENTAIRE ====================
+
+class InventaireViewSet(viewsets.ModelViewSet):
+    """ViewSet pour gérer les inventaires"""
+    queryset = Inventaire.objects.all()
+    serializer_class = InventaireSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['statut', 'entrepot', 'entreprise', 'responsable']
+    search_fields = ['nom', 'numero', 'description']
+    ordering_fields = ['created_at', 'date_debut', 'statut']
+    ordering = ['-created_at']
+    
+    def get_queryset(self):
+        """Filtrer les inventaires par entreprise de l'utilisateur connecté"""
+        queryset = super().get_queryset()
+        
+        # Filtrer par entreprise de l'utilisateur connecté
+        if self.request.user.entreprise:
+            queryset = queryset.filter(entreprise=self.request.user.entreprise)
+        else:
+            queryset = queryset.none()
+        
+        # Optimisations
+        return queryset.select_related(
+            'entrepot', 'entreprise', 'responsable', 'created_by'
+        ).prefetch_related('produits__produit')
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return InventaireCreateSerializer
+        return InventaireSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Créer un inventaire et initialiser les produits"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Ajouter l'entreprise de l'utilisateur connecté
+        entreprise = request.user.entreprise
+        if not entreprise:
+            return Response({
+                'error': 'Vous devez être associé à une entreprise'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer.validated_data['entreprise'] = entreprise
+        serializer.validated_data['created_by'] = request.user
+        
+        # Créer l'inventaire
+        inventaire = serializer.save()
+        
+        # Initialiser tous les produits de l'entrepôt
+        entrepot = inventaire.entrepot
+        
+        # Récupérer tous les stocks de cet entrepôt
+        stocks = Stock.objects.filter(entrepot=entrepot, produit__entreprise=entreprise)
+        
+        # Créer les entrées d'inventaire pour chaque produit
+        for stock in stocks:
+            InventaireProduit.objects.create(
+                inventaire=inventaire,
+                produit=stock.produit,
+                quantite_theorique=stock.quantite
+            )
+        
+        # Mettre à jour le nombre total de produits
+        inventaire.total_produits = stocks.count()
+        inventaire.save()
+        
+        return Response(self.serializer_class(inventaire).data, status=status.HTTP_201_CREATED)
+    
+    def retrieve(self, request, *args, **kwargs):
+        """Récupérer les détails d'un inventaire avec tous ses produits"""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+
+class InventaireProduitViewSet(viewsets.ModelViewSet):
+    """ViewSet pour gérer les produits d'un inventaire"""
+    queryset = InventaireProduit.objects.all()
+    serializer_class = InventaireProduitSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['inventaire', 'est_compte']
+    search_fields = ['produit__nom', 'produit__sku', 'produit__reference']
+    
+    def get_queryset(self):
+        """Filtrer par entreprise de l'utilisateur"""
+        queryset = super().get_queryset()
+        
+        if self.request.user.entreprise:
+            queryset = queryset.filter(inventaire__entreprise=self.request.user.entreprise)
+        else:
+            queryset = queryset.none()
+        
+        return queryset.select_related('produit', 'inventaire', 'compteur')
+    
+    def update(self, request, *args, **kwargs):
+        """Mettre à jour un produit d'inventaire (comptage)"""
+        instance = self.get_object()
+        
+        # Vérifier que l'inventaire est en cours
+        if instance.inventaire.statut != 'en_cours':
+            return Response({
+                'error': f'Cet inventaire est {instance.inventaire.get_statut_display()}. Le comptage n\'est pas possible.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        quantite_reelle = request.data.get('quantite_reelle')
+        commentaire = request.data.get('commentaire', '')
+        
+        if quantite_reelle is None:
+            return Response({
+                'error': 'La quantité réelle est requise'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Marquer comme compté
+        instance.marquer_compte(quantite_reelle, request.user, commentaire)
+        
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def demarrer_inventaire(request, pk):
+    """Action pour démarrer un inventaire"""
+    try:
+        inventaire = Inventaire.objects.get(pk=pk)
+        
+        # Vérifier que l'utilisateur peut démarrer cet inventaire
+        if inventaire.entreprise != request.user.entreprise:
+            return Response({
+                'error': 'Vous n\'avez pas les permissions pour démarrer cet inventaire'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        if inventaire.statut != 'planifie':
+            return Response({
+                'error': f'Cet inventaire est déjà {inventaire.get_statut_display()}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        inventaire.mark_as_started()
+        
+        return Response({
+            'success': True,
+            'message': 'Inventaire démarré avec succès',
+            'inventaire': InventaireSerializer(inventaire).data
+        })
+    except Inventaire.DoesNotExist:
+        return Response({
+            'error': 'Inventaire non trouvé'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def terminer_inventaire(request, pk):
+    """Action pour terminer un inventaire"""
+    try:
+        inventaire = Inventaire.objects.get(pk=pk)
+        
+        # Vérifier les permissions
+        if inventaire.entreprise != request.user.entreprise:
+            return Response({
+                'error': 'Vous n\'avez pas les permissions pour terminer cet inventaire'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        if inventaire.statut != 'en_cours':
+            return Response({
+                'error': f'Cet inventaire est {inventaire.get_statut_display()}. Impossible de terminer.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Vérifier que les stocks ont été ajustés avant de terminer
+        if not inventaire.stocks_ajustes:
+            return Response({
+                'error': 'Vous devez d\'abord ajuster les stocks avant de terminer l\'inventaire'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Terminer l'inventaire
+        inventaire.mark_as_completed()
+        
+        return Response({
+            'success': True,
+            'message': 'Inventaire terminé avec succès',
+            'inventaire': InventaireSerializer(inventaire).data
+        })
+    except Inventaire.DoesNotExist:
+        return Response({
+            'error': 'Inventaire non trouvé'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def ajuster_stocks_inventaire(request, pk):
+    """Ajuster les stocks suite à un inventaire"""
+    try:
+        inventaire = Inventaire.objects.get(pk=pk)
+        
+        # Vérifier les permissions
+        if inventaire.entreprise != request.user.entreprise:
+            return Response({
+                'error': 'Vous n\'avez pas les permissions pour ajuster les stocks de cet inventaire'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Vérifier le statut
+        if inventaire.statut != 'en_cours':
+            return Response({
+                'error': 'Cet inventaire doit être en cours pour ajuster les stocks'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Vérifier si déjà ajusté
+        if inventaire.stocks_ajustes:
+            return Response({
+                'error': 'Les stocks ont déjà été ajustés pour cet inventaire'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Ajuster les stocks
+        resultat = inventaire.ajuster_stocks(request.user)
+        
+        if 'error' in resultat:
+            return Response({
+                'error': resultat['error']
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Recharger l'inventaire pour avoir les données à jour
+        inventaire.refresh_from_db()
+        
+        # Invalider le cache des stocks
+        if inventaire.entrepot:
+            CacheManager.invalidate_stocks_cache(inventaire.entrepot.id)
+        if inventaire.entreprise:
+            CacheManager.invalidate_produits_cache(inventaire.entreprise.id)
+        
+        return Response({
+            'success': True,
+            'message': resultat['message'],
+            'ajustements_faits': resultat['ajustements_faits'],
+            'mouvements_crees': resultat['mouvements_crees'],
+            'inventaire': InventaireSerializer(inventaire).data
+        })
+        
+    except Inventaire.DoesNotExist:
+        return Response({
+            'error': 'Inventaire non trouvé'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"ERREUR lors de l'ajustement des stocks (Inventaire {pk}):")
+        print(f"Erreur: {str(e)}")
+        print(f"Traceback:\n{error_trace}")
+        return Response({
+            'error': f'Erreur lors de l\'ajustement des stocks: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+

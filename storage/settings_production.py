@@ -41,5 +41,6 @@ CACHES = {
 CORS_ALLOWED_ORIGINS = [
     "https://murastorage.pythonanywhere.com",
     "https://www.murastorage.pythonanywhere.com",
+    "https://murastorage.netlify.app",  # Frontend Netlify
     "http://localhost:3000",  # Pour le développement local
 ]

@@ -386,8 +386,10 @@ class ProduitSerializer(serializers.ModelSerializer):
             'prix_achat': {'required': True},
             'prix_vente': {'required': True},
             'quantite': {'required': False},
-            'entreprise': {'required': True},
-            'nom': {'required': True}
+            'entreprise': {'required': True, 'read_only': True},  # PROTECTION: entreprise non modifiable
+            'nom': {'required': True},
+            'emplacement': {'required': False, 'allow_null': True},  # Nouveau champ
+            'details': {'required': False}  # Nouveau champ JSON
         }
     
     def get_marge(self, obj):
@@ -664,3 +666,72 @@ class JournalSerializer(serializers.ModelSerializer):
 
     def get_boutique_nom(self, obj):
         return obj.boutique.nom if obj.boutique else None
+
+
+# ==================== SERIALIZERS D'INVENTAIRE ====================
+
+class InventaireProduitSerializer(serializers.ModelSerializer):
+    """Sérialiseur pour les produits d'un inventaire"""
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+    produit_reference = serializers.CharField(source='produit.reference', read_only=True)
+    prix_achat = serializers.DecimalField(source='produit.prix_achat', max_digits=10, decimal_places=2, read_only=True)
+    compteur_nom = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = InventaireProduit
+        fields = '__all__'
+        read_only_fields = ('ecart', 'date_comptage', 'created_at', 'updated_at')
+    
+    def get_compteur_nom(self, obj):
+        if obj.compteur:
+            return f"{obj.compteur.first_name} {obj.compteur.last_name}"
+        return None
+
+
+class InventaireSerializer(serializers.ModelSerializer):
+    """Sérialiseur pour les inventaires"""
+    entrepot_nom = serializers.CharField(source='entrepot.nom', read_only=True)
+    entrepot_ville = serializers.CharField(source='entrepot.ville', read_only=True)
+    responsable_nom = serializers.SerializerMethodField()
+    created_by_nom = serializers.SerializerMethodField()
+    progression = serializers.IntegerField(source='get_progression', read_only=True)
+    produits_detail = InventaireProduitSerializer(source='produits', many=True, read_only=True)
+    
+    class Meta:
+        model = Inventaire
+        fields = '__all__'
+        read_only_fields = ('created_at', 'updated_at', 'produits_comptes', 'ecarts_trouves', 'date_fin_reelle', 'stocks_ajustes', 'date_ajustement')
+    
+    def get_responsable_nom(self, obj):
+        if obj.responsable:
+            return f"{obj.responsable.first_name} {obj.responsable.last_name}"
+        return None
+    
+    def get_created_by_nom(self, obj):
+        if obj.created_by:
+            return f"{obj.created_by.first_name} {obj.created_by.last_name}"
+        return None
+
+
+class InventaireCreateSerializer(serializers.ModelSerializer):
+    """Sérialiseur pour créer un inventaire"""
+    
+    class Meta:
+        model = Inventaire
+        fields = ['nom', 'description', 'entreprise', 'entrepot', 'date_debut', 'date_fin_prevue', 'responsable']
+    
+    def create(self, validated_data):
+        """Créer un inventaire et générer un numéro unique"""
+        import uuid
+        from datetime import datetime
+        
+        # Générer un numéro unique pour l'inventaire
+        numero = f"INV-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
+        
+        inventaire = Inventaire.objects.create(
+            numero=numero,
+            **validated_data
+        )
+        
+        return inventaire

@@ -31,6 +31,9 @@ router.register(r'users', UserViewSet)
 router.register(r'subscription-plans', SubscriptionPlanViewSet, basename='subscription-plans')
 router.register(r'subscriptions', EntrepriseSubscriptionViewSet, basename='subscriptions')
 router.register(r'usage-tracking', UsageTrackingViewSet, basename='usage-tracking')
+# Routes pour les inventaires
+router.register(r'inventaires', InventaireViewSet, basename='inventaires')
+router.register(r'inventaires-produits', InventaireProduitViewSet, basename='inventaires-produits')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -39,4 +42,11 @@ urlpatterns = [
     path('auth/jwt/refresh/', TokenRefreshView.as_view(), name='api_jwt_refresh'),
     path('auth/jwt/verify/', TokenVerifyView.as_view(), name='api_jwt_verify'),
     path('contact/submit/', contact_form_submit, name='contact_form_submit'),
+    # Password reset endpoints
+    path('password-reset/request/', request_password_reset, name='password_reset_request'),
+    path('password-reset/confirm/', confirm_password_reset, name='password_reset_confirm'),
+    # Routes pour les actions d'inventaire
+    path('inventaires/<int:pk>/demarrer/', demarrer_inventaire, name='demarrer_inventaire'),
+    path('inventaires/<int:pk>/terminer/', terminer_inventaire, name='terminer_inventaire'),
+    path('inventaires/<int:pk>/ajuster-stocks/', ajuster_stocks_inventaire, name='ajuster_stocks_inventaire'),
 ]
