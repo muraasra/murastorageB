@@ -1321,7 +1321,7 @@ class FactureViewSet(viewsets.ModelViewSet):
             # Si pas d'entreprise, retourner un queryset vide
             queryset = queryset.none()
         
-        return queryset.select_related('boutique', 'boutique__entreprise', 'created_by')
+        return queryset.select_related('boutique', 'boutique__entreprise', 'created_by', 'client', 'partenaire')
 
     def get_permissions(self):
         """Permissions dynamiques selon l'action"""
@@ -1379,6 +1379,16 @@ class CommandeClientViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminOrSuperAdmin]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['facture', 'produit']
+    
+    def get_permissions(self):
+        """
+        Permettre la lecture (GET) pour tous les utilisateurs authentifiés,
+        mais restreindre les modifications aux admins/superadmins.
+        """
+        if self.action in ['list', 'retrieve']:
+            from rest_framework.permissions import IsAuthenticated
+            return [IsAuthenticated()]
+        return [IsAdminOrSuperAdmin()]
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -1402,7 +1412,22 @@ class CommandePartenaireViewSet(viewsets.ModelViewSet):
     serializer_class = CommandePartenaireSerializer
     permission_classes = [IsAdminOrSuperAdmin]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['facture', 'partenaire', 'produit']
+    
+    def get_permissions(self):
+        """
+        Permettre la lecture (GET) pour tous les utilisateurs authentifiés,
+        mais restreindre les modifications aux admins/superadmins.
+        """
+        if self.action in ['list', 'retrieve']:
+            from rest_framework.permissions import IsAuthenticated
+            return [IsAuthenticated()]
+        return [IsAdminOrSuperAdmin()]
+    filterset_fields = ['facture', 'produit']  # 'partenaire' n'existe pas directement sur CommandePartenaire, il est via facture.partenaire
+    
+    def get_queryset(self):
+        """Optimiser les requêtes avec select_related pour éviter les N+1 queries"""
+        queryset = super().get_queryset()
+        return queryset.select_related('produit', 'facture', 'facture__boutique', 'facture__partenaire')
 
     def perform_create(self, serializer):
         instance = serializer.save()

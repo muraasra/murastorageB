@@ -492,7 +492,7 @@ class PrixProduit(models.Model):
 
 class SequenceFacture(models.Model):
     """Modèle pour gérer les séquences de numérotation des factures par boutique"""
-    boutique = models.OneToOneField(Boutique, on_delete=models.CASCADE, related_name='sequence_facture')
+    boutique = models.ForeignKey(Boutique, on_delete=models.CASCADE, related_name='sequences_facture')
     annee = models.IntegerField()
     mois = models.IntegerField()
     dernier_numero = models.IntegerField(default=0)
@@ -500,7 +500,7 @@ class SequenceFacture(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        unique_together = ['boutique', 'annee', 'mois']
+        unique_together = [['boutique', 'annee', 'mois']]
         ordering = ['boutique', 'annee', 'mois']
     
     def __str__(self):
@@ -510,25 +510,54 @@ class SequenceFacture(models.Model):
     def get_next_number(cls, boutique):
         """Obtenir le prochain numéro de facture pour une boutique"""
         from django.db import transaction
+        from django.db.utils import IntegrityError
         from datetime import datetime
+        import time
         
         now = datetime.now()
         annee = now.year
         mois = now.month
         
-        with transaction.atomic():
-            # Utiliser select_for_update pour éviter les conflits de concurrence
-            sequence, created = cls.objects.select_for_update().get_or_create(
-                boutique=boutique,
-                annee=annee,
-                mois=mois,
-                defaults={'dernier_numero': 0}
-            )
-            
-            sequence.dernier_numero += 1
-            sequence.save()
-            
-            return sequence.dernier_numero
+        # Retry en cas de race condition (max 3 tentatives)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                with transaction.atomic():
+                    # Utiliser select_for_update pour éviter les conflits de concurrence
+                    try:
+                        sequence = cls.objects.select_for_update().get(
+                            boutique=boutique,
+                            annee=annee,
+                            mois=mois
+                        )
+                    except cls.DoesNotExist:
+                        # Créer la séquence si elle n'existe pas
+                        try:
+                            sequence = cls.objects.create(
+                                boutique=boutique,
+                                annee=annee,
+                                mois=mois,
+                                dernier_numero=0
+                            )
+                        except IntegrityError:
+                            # Si création échoue (race condition), réessayer de récupérer
+                            sequence = cls.objects.select_for_update().get(
+                                boutique=boutique,
+                                annee=annee,
+                                mois=mois
+                            )
+                    
+                    sequence.dernier_numero += 1
+                    sequence.save()
+                    
+                    return sequence.dernier_numero
+            except IntegrityError:
+                # En cas d'erreur d'intégrité, attendre un peu et réessayer
+                if attempt < max_retries - 1:
+                    time.sleep(0.01 * (attempt + 1))  # Attendre progressivement plus longtemps
+                    continue
+                else:
+                    raise
     
     @classmethod
     def generate_invoice_number(cls, boutique):
@@ -575,6 +604,12 @@ class Partenaire(models.Model):
     boutique = models.BooleanField(default=True)
     localisation = models.CharField(max_length=100, default='Bafoussam')
     dateadhesion = models.DateTimeField(default=now)
+    
+    def __str__(self):
+        """Représentation string du partenaire"""
+        if self.prenom:
+            return f"{self.prenom} {self.nom}".strip()
+        return self.nom
 
 class Facture(models.Model):
     TYPES = (

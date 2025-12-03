@@ -326,16 +326,65 @@ class CategorieSerializer(serializers.ModelSerializer):
     class Meta:
         model = Categorie
         fields = '__all__'
+        extra_kwargs = {
+            'entreprise': {'required': False, 'allow_null': True},
+            'nom': {'required': True}
+        }
     
     def get_sous_categories(self, obj):
         if obj.sous_categories.exists():
             return CategorieSerializer(obj.sous_categories.all(), many=True).data
         return []
+    
+    def validate_nom(self, value):
+        """Valider l'unicité du nom par entreprise"""
+        # En mode update, exclure l'instance actuelle de la vérification
+        queryset = Categorie.objects.filter(nom=value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        
+        # Si une entreprise est fournie, filtrer par entreprise
+        entreprise = self.initial_data.get('entreprise') or (self.instance.entreprise if self.instance else None)
+        if entreprise:
+            queryset = queryset.filter(entreprise=entreprise)
+        
+        if queryset.exists():
+            raise serializers.ValidationError("Une catégorie avec ce nom existe déjà pour cette entreprise.")
+        return value
+    
+    def update(self, instance, validated_data):
+        """Mise à jour d'une catégorie - préserver l'entreprise si non fournie"""
+        # Si l'entreprise n'est pas dans validated_data, utiliser celle de l'instance
+        if 'entreprise' not in validated_data or validated_data.get('entreprise') is None:
+            validated_data['entreprise'] = instance.entreprise
+        return super().update(instance, validated_data)
 
 class FournisseurSerializer(serializers.ModelSerializer):
     class Meta:
         model = Fournisseur
         fields = '__all__'
+        extra_kwargs = {
+            'entreprise': {'required': False, 'allow_null': True},
+            'code_fournisseur': {'required': True}
+        }
+    
+    def validate_code_fournisseur(self, value):
+        """Valider l'unicité du code fournisseur"""
+        # En mode update, exclure l'instance actuelle de la vérification
+        queryset = Fournisseur.objects.filter(code_fournisseur=value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        
+        if queryset.exists():
+            raise serializers.ValidationError("Un fournisseur avec ce code existe déjà.")
+        return value
+    
+    def update(self, instance, validated_data):
+        """Mise à jour d'un fournisseur - préserver l'entreprise si non fournie"""
+        # Si l'entreprise n'est pas dans validated_data, utiliser celle de l'instance
+        if 'entreprise' not in validated_data or validated_data.get('entreprise') is None:
+            validated_data['entreprise'] = instance.entreprise
+        return super().update(instance, validated_data)
 
 class StockSerializer(serializers.ModelSerializer):
     entrepot_nom = serializers.CharField(source='entrepot.nom', read_only=True)
@@ -512,9 +561,18 @@ class FactureSerializer(serializers.ModelSerializer):
     
     def get_partenaire_nom(self, obj):
         """Récupérer le nom du partenaire"""
-        if obj.partenaire:
-            return str(obj.partenaire)
-        return None
+        try:
+            if obj.partenaire:
+                # S'assurer que le partenaire est chargé
+                if hasattr(obj.partenaire, 'nom'):
+                    if obj.partenaire.prenom:
+                        return f"{obj.partenaire.prenom} {obj.partenaire.nom}".strip()
+                    return obj.partenaire.nom
+                return str(obj.partenaire)
+            return None
+        except Exception as e:
+            print(f"Erreur get_partenaire_nom: {e}")
+            return None
     
     class Meta:
         model = Facture
@@ -537,8 +595,28 @@ class FactureSerializer(serializers.ModelSerializer):
 class CommandeClientSerializer(serializers.ModelSerializer):
     """Serializer pour le modèle CommandeClient"""
     total = serializers.ReadOnlyField()
-    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
-    produit_reference = serializers.CharField(source='produit.reference', read_only=True)
+    produit_nom = serializers.SerializerMethodField()
+    produit_reference = serializers.SerializerMethodField()
+    
+    def get_produit_nom(self, obj):
+        """Récupérer le nom du produit"""
+        try:
+            if hasattr(obj, 'produit') and obj.produit:
+                return obj.produit.nom
+            return 'Produit inconnu'
+        except Exception as e:
+            print(f"Erreur get_produit_nom: {e}")
+            return 'Produit inconnu'
+    
+    def get_produit_reference(self, obj):
+        """Récupérer la référence du produit"""
+        try:
+            if hasattr(obj, 'produit') and obj.produit:
+                return obj.produit.reference or ''
+            return ''
+        except Exception as e:
+            print(f"Erreur get_produit_reference: {e}")
+            return ''
     
     class Meta:
         model = CommandeClient
@@ -588,8 +666,28 @@ class CommandeClientSerializer(serializers.ModelSerializer):
 class CommandePartenaireSerializer(serializers.ModelSerializer):
     """Serializer pour le modèle CommandePartenaire"""
     total = serializers.ReadOnlyField()
-    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
-    produit_reference = serializers.CharField(source='produit.reference', read_only=True)
+    produit_nom = serializers.SerializerMethodField()
+    produit_reference = serializers.SerializerMethodField()
+    
+    def get_produit_nom(self, obj):
+        """Récupérer le nom du produit"""
+        try:
+            if hasattr(obj, 'produit') and obj.produit:
+                return obj.produit.nom
+            return 'Produit inconnu'
+        except Exception as e:
+            print(f"Erreur get_produit_nom: {e}")
+            return 'Produit inconnu'
+    
+    def get_produit_reference(self, obj):
+        """Récupérer la référence du produit"""
+        try:
+            if hasattr(obj, 'produit') and obj.produit:
+                return obj.produit.reference or ''
+            return ''
+        except Exception as e:
+            print(f"Erreur get_produit_reference: {e}")
+            return ''
     
     class Meta:
         model = CommandePartenaire
