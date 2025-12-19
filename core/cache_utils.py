@@ -48,6 +48,9 @@ def cache_api_response(timeout: int = 300, key_prefix: str = 'api', vary_on_user
 
             cache_key = ':'.join(cache_key_parts)
 
+            # Appliquer un TTL max de 30 secondes pour rester temps réel
+            effective_timeout = min(timeout, 30)
+
             # Vérifier le cache
             cached_response = cache.get(cache_key)
             if cached_response is not None:
@@ -58,7 +61,7 @@ def cache_api_response(timeout: int = 300, key_prefix: str = 'api', vary_on_user
 
             # Mettre en cache si c'est une réponse valide
             if response.status_code == 200 and hasattr(response, 'data'):
-                cache.set(cache_key, response.data, timeout)
+                cache.set(cache_key, response.data, effective_timeout)
 
             return response
 

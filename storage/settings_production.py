@@ -28,12 +28,12 @@ STATIC_ROOT = '/home/murastorage/walner-durel/static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = '/home/murastorage/walner-durel/media/'
 
-# Cache simple (LocMemCache)
+# Cache simple (LocMemCache) avec TTL très court (30s max)
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         'LOCATION': 'unique-snowflake',
-        'TIMEOUT': 300,
+        'TIMEOUT': 30,  # 30 secondes
     }
 }
 
