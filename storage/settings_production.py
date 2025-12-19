@@ -28,11 +28,12 @@ STATIC_ROOT = '/home/murastorage/walner-durel/static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = '/home/murastorage/walner-durel/media/'
 
-# Cache désactivé en production pour forcer les données en temps réel
-# Utilise DummyCache : toutes les opérations de cache sont des no-op
+# Cache simple (LocMemCache)
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+        'TIMEOUT': 300,
     }
 }
 
