@@ -1,8 +1,5 @@
 # core/cache_utils.py
 from django.core.cache import cache
-from django.utils.decorators import method_decorator
-from django.views.decorators.cache import cache_page
-from django.views.decorators.vary import vary_on_headers
 from functools import wraps
 import hashlib
 import json
@@ -10,60 +7,24 @@ from typing import Any, Optional, Callable
 from django.http import HttpRequest
 from rest_framework.response import Response
 
+
 def cache_api_response(timeout: int = 300, key_prefix: str = 'api', vary_on_user: bool = True):
     """
-    Décorateur pour mettre en cache les réponses d'API
-    
-    Args:
-        timeout: Durée du cache en secondes (défaut: 5 minutes)
-        key_prefix: Préfixe pour la clé de cache
-        vary_on_user: Si True, varie le cache selon l'utilisateur
+    Décorateur d'origine pour mettre en cache les réponses d'API.
+
+    ⚠️ Cache désactivé : pour avoir des données en temps réel, ce décorateur
+    retourne simplement la vue sans lire/écrire dans le cache.
+    Les paramètres sont conservés pour compatibilité mais ignorés.
     """
+
     def decorator(view_func: Callable) -> Callable:
         @wraps(view_func)
         def wrapper(self, request: HttpRequest, *args, **kwargs) -> Response:
-            # Construire la clé de cache
-            cache_key_parts = [key_prefix]
-            
-            # Ajouter l'utilisateur si nécessaire
-            if vary_on_user and hasattr(request, 'user') and request.user.is_authenticated:
-                cache_key_parts.append(f"user_{request.user.id}")
-            
-            # Ajouter les paramètres de requête
-            query_params = dict(request.GET)
-            if query_params:
-                params_str = json.dumps(query_params, sort_keys=True)
-                params_hash = hashlib.md5(params_str.encode()).hexdigest()[:8]
-                cache_key_parts.append(f"params_{params_hash}")
-            
-            # Ajouter l'entreprise si disponible
-            if hasattr(request, 'user') and request.user.is_authenticated and request.user.entreprise:
-                cache_key_parts.append(f"entreprise_{request.user.entreprise.id}")
-            
-            # Ajouter la boutique si disponible
-            if hasattr(request, 'user') and request.user.is_authenticated and request.user.boutique:
-                cache_key_parts.append(f"boutique_{request.user.boutique.id}")
-            
-            # Ajouter le chemin de la requête
-            cache_key_parts.append(request.path.replace('/', '_'))
-            
-            cache_key = ':'.join(cache_key_parts)
-            
-            # Vérifier le cache
-            cached_response = cache.get(cache_key)
-            if cached_response is not None:
-                return Response(cached_response)
-            
-            # Exécuter la vue
-            response = view_func(self, request, *args, **kwargs)
-            
-            # Mettre en cache si c'est une réponse valide
-            if response.status_code == 200 and hasattr(response, 'data'):
-                cache.set(cache_key, response.data, timeout)
-            
-            return response
-        
+            # Exécuter directement la vue sans aucune logique de cache
+            return view_func(self, request, *args, **kwargs)
+
         return wrapper
+
     return decorator
 
 def invalidate_cache_pattern(pattern: str):
