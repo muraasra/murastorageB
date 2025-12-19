@@ -510,22 +510,25 @@ class SequenceFacture(models.Model):
     def get_next_number(cls, boutique):
         """Obtenir le prochain numéro de facture pour une boutique"""
         from django.db import transaction
-        from django.db.utils import IntegrityError
+        from django.db.utils import IntegrityError, DatabaseError
         from datetime import datetime
         import time
+        
+        if not boutique or not boutique.id:
+            raise ValueError("Boutique invalide pour la génération du numéro de facture")
         
         now = datetime.now()
         annee = now.year
         mois = now.month
         
-        # Retry en cas de race condition (max 3 tentatives)
-        max_retries = 3
+        # Retry en cas de race condition (max 5 tentatives)
+        max_retries = 5
         for attempt in range(max_retries):
             try:
                 with transaction.atomic():
                     # Utiliser select_for_update pour éviter les conflits de concurrence
                     try:
-                        sequence = cls.objects.select_for_update().get(
+                        sequence = cls.objects.select_for_update(nowait=True).get(
                             boutique=boutique,
                             annee=annee,
                             mois=mois
@@ -539,25 +542,46 @@ class SequenceFacture(models.Model):
                                 mois=mois,
                                 dernier_numero=0
                             )
-                        except IntegrityError:
+                        except IntegrityError as e:
                             # Si création échoue (race condition), réessayer de récupérer
-                            sequence = cls.objects.select_for_update().get(
-                                boutique=boutique,
-                                annee=annee,
-                                mois=mois
-                            )
+                            # Attendre un peu pour laisser l'autre transaction se terminer
+                            time.sleep(0.05 * (attempt + 1))
+                            try:
+                                sequence = cls.objects.select_for_update(nowait=True).get(
+                                    boutique=boutique,
+                                    annee=annee,
+                                    mois=mois
+                                )
+                            except cls.DoesNotExist:
+                                # Si toujours pas trouvé après l'attente, réessayer la création
+                                if attempt < max_retries - 1:
+                                    continue
+                                else:
+                                    raise ValueError(f"Impossible de créer ou récupérer la séquence pour la boutique {boutique.id}")
                     
                     sequence.dernier_numero += 1
-                    sequence.save()
+                    sequence.save(update_fields=['dernier_numero', 'updated_at'])
                     
                     return sequence.dernier_numero
-            except IntegrityError:
-                # En cas d'erreur d'intégrité, attendre un peu et réessayer
+                    
+            except (IntegrityError, DatabaseError) as e:
+                # En cas d'erreur d'intégrité ou de base de données, attendre et réessayer
                 if attempt < max_retries - 1:
-                    time.sleep(0.01 * (attempt + 1))  # Attendre progressivement plus longtemps
+                    wait_time = 0.1 * (attempt + 1)  # Attendre progressivement plus longtemps
+                    time.sleep(wait_time)
                     continue
                 else:
-                    raise
+                    # Log l'erreur pour le débogage
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Erreur lors de la génération du numéro de facture après {max_retries} tentatives: {str(e)}")
+                    raise ValueError(f"Erreur lors de la génération du numéro de facture: {str(e)}")
+            except Exception as e:
+                # Pour toute autre erreur, log et relancer
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Erreur inattendue lors de la génération du numéro de facture: {str(e)}")
+                raise
     
     @classmethod
     def generate_invoice_number(cls, boutique):
