@@ -48,11 +48,12 @@ class Entreprise(models.Model):
     pack_type = models.CharField(
         max_length=20,
         choices=[
-            ('basique', 'Basique'),
-            ('professionnel', 'Professionnel'),
-            ('entreprise', 'Entreprise'),
+            ('free', 'Free'),
+            ('basic', 'Basic'),
+            ('premium', 'Premium'),
+            ('organisation', 'Organisation'),
         ],
-        default='basique'
+        default='free'
     )
     pack_prix = models.FloatField(default=0)
     pack_duree = models.CharField(max_length=20, default='mensuel')

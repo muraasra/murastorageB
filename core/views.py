@@ -1351,6 +1351,167 @@ class FactureViewSet(viewsets.ModelViewSet):
             }
         )
 
+    @action(detail=False, methods=['post'], url_path='create-with-stock')
+    def create_with_stock(self, request):
+        """Créer une facture + commandes + mise à jour stock en transaction"""
+        transaction_serializer = FactureTransactionSerializer(data=request.data)
+        transaction_serializer.is_valid(raise_exception=True)
+
+        data = transaction_serializer.validated_data
+        boutique = data['boutique']
+
+        # Sécurité: boutique doit appartenir à l'entreprise de l'utilisateur
+        if request.user.entreprise and boutique.entreprise_id != request.user.entreprise_id:
+            return Response(
+                {'error': "Boutique non autorisée"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        items = data['items']
+        produit_ids = [item['produit'].id for item in items]
+
+        with transaction.atomic():
+            # Verrouiller les stocks concernés
+            stocks_qs = Stock.objects.select_for_update().filter(
+                entrepot=boutique,
+                produit_id__in=produit_ids
+            )
+            stocks_map = {s.produit_id: s for s in stocks_qs}
+
+            # Vérifier stock suffisant
+            for item in items:
+                stock = stocks_map.get(item['produit'].id)
+                if not stock:
+                    raise serializers.ValidationError(
+                        f"Stock introuvable pour {item['produit'].nom}"
+                    )
+                if stock.quantite < item['quantite']:
+                    raise serializers.ValidationError(
+                        f"Stock insuffisant pour {item['produit'].nom} (disponible: {stock.quantite})"
+                    )
+
+            # Créer la facture
+            facture = Facture.objects.create(
+                type=data['type'],
+                total=data['total'],
+                reste=data['reste'],
+                status=data.get('status', 'En attente'),
+                client=data.get('client'),
+                partenaire=data.get('partenaire'),
+                boutique=boutique,
+                created_by=request.user,
+                entreprise=boutique.entreprise
+            )
+
+            commandes = []
+            mouvements = []
+
+            # Créer commandes + mouvements + mise à jour stock
+            for item in items:
+                stock = stocks_map[item['produit'].id]
+                quantite_avant = stock.quantite
+                quantite_apres = quantite_avant - item['quantite']
+
+                if data['type'] == 'client':
+                    commande = CommandeClient.objects.create(
+                        facture=facture,
+                        produit=item['produit'],
+                        quantite=item['quantite'],
+                        prix_unitaire_fcfa=item['prix_unitaire_fcfa'],
+                        prix_initial_fcfa=item.get('prix_initial_fcfa') or item['prix_unitaire_fcfa'],
+                        justification_prix=item.get('justification_prix') or ''
+                    )
+                else:
+                    commande = CommandePartenaire.objects.create(
+                        facture=facture,
+                        produit=item['produit'],
+                        quantite=item['quantite'],
+                        prix_unitaire_fcfa=item['prix_unitaire_fcfa'],
+                        prix_initial_fcfa=item.get('prix_initial_fcfa') or item['prix_unitaire_fcfa'],
+                        justification_prix=item.get('justification_prix') or ''
+                    )
+
+                commandes.append(commande)
+
+                # Mettre à jour le stock
+                stock.quantite = quantite_apres
+                stock.save()
+
+                # Créer mouvement stock
+                mouvement = MouvementStock.objects.create(
+                    produit=item['produit'],
+                    entrepot=boutique,
+                    type_mouvement='sortie',
+                    quantite=item['quantite'],
+                    quantite_avant=quantite_avant,
+                    quantite_apres=quantite_apres,
+                    motif=f"Vente - Facture {facture.numero}",
+                    reference_document=facture.numero
+                )
+                mouvements.append(mouvement)
+
+                # Journal par ligne
+                try:
+                    create_journal_entry(
+                        user=request.user,
+                        type_operation='vente',
+                        description=f"Vente de {commande.quantite} {commande.produit.nom}",
+                        boutique=facture.boutique,
+                        details={
+                            'commande_id': commande.id,
+                            'produit': commande.produit.nom,
+                            'quantite': commande.quantite,
+                            'prix_unitaire': commande.prix_unitaire_fcfa,
+                            'total': commande.total
+                        }
+                    )
+                except Exception:
+                    pass
+
+            # Journal facture
+            try:
+                create_journal_entry(
+                    user=request.user,
+                    type_operation='creation',
+                    description=f"Création de la facture {facture.numero}",
+                    boutique=facture.boutique,
+                    details={
+                        'facture_id': facture.id,
+                        'numero': facture.numero,
+                        'type': facture.type,
+                        'total': facture.total,
+                        'reste': facture.reste
+                    }
+                )
+            except Exception:
+                pass
+
+            # Invalidation cache
+            try:
+                CacheManager.invalidate_api_prefix('factures')
+                CacheManager.invalidate_api_prefix('commandes-client')
+                CacheManager.invalidate_api_prefix('commandes-partenaire')
+                CacheManager.invalidate_api_prefix('stocks')
+                CacheManager.invalidate_api_prefix('mouvements-stock')
+            except Exception:
+                pass
+
+            # Réponse
+            facture_data = FactureSerializer(facture).data
+            if data['type'] == 'client':
+                commandes_data = CommandeClientSerializer(commandes, many=True).data
+            else:
+                commandes_data = CommandePartenaireSerializer(commandes, many=True).data
+
+            return Response(
+                {
+                    'success': True,
+                    'facture': facture_data,
+                    'commandes': commandes_data
+                },
+                status=status.HTTP_201_CREATED
+            )
+
     def perform_update(self, serializer):
         instance = serializer.save()
         try:

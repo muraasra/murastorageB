@@ -129,3 +129,4 @@ Si le problème persiste après ces corrections, vérifiez:
 2. Les logs MySQL pour les erreurs de contraintes
 3. La configuration de la base de données
 
+

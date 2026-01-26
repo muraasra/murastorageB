@@ -53,7 +53,7 @@ class EntrepriseCreateSerializer(serializers.ModelSerializer):
     numero_fiscal = serializers.CharField(max_length=50, required=False, allow_blank=True, help_text="Numéro fiscal")
     nombre_employes = serializers.IntegerField(default=0, help_text="Nombre d'employés")
     annee_creation = serializers.IntegerField(help_text="Année de création de l'entreprise")
-    pack_type = serializers.ChoiceField(choices=[('basique', 'Basique'), ('professionnel', 'Professionnel'), ('entreprise', 'Entreprise')], default='basique', help_text="Type de pack")
+    pack_type = serializers.ChoiceField(choices=[('free', 'Free'), ('basic', 'Basic'), ('premium', 'Premium'), ('organisation', 'Organisation')], default='free', help_text="Type de pack")
     pack_prix = serializers.FloatField(default=0, help_text="Prix du pack")
     pack_duree = serializers.CharField(max_length=20, default='mensuel', help_text="Durée du pack")
     is_active = serializers.BooleanField(default=True, help_text="Statut actif de l'entreprise")
@@ -590,6 +590,34 @@ class FactureSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Un client doit être spécifié pour une facture client")
         if data.get('type') == 'partenaire' and not data.get('partenaire'):
             raise serializers.ValidationError("Un partenaire doit être spécifié pour une facture partenaire")
+        return data
+
+class FactureLineItemSerializer(serializers.Serializer):
+    """Ligne de facture pour création transactionnelle"""
+    produit = serializers.PrimaryKeyRelatedField(queryset=Produit.objects.all())
+    quantite = serializers.IntegerField(min_value=1)
+    prix_unitaire_fcfa = serializers.FloatField(min_value=0)
+    prix_initial_fcfa = serializers.FloatField(required=False, allow_null=True)
+    justification_prix = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+class FactureTransactionSerializer(serializers.Serializer):
+    """Payload pour créer facture + commandes + stock en transaction"""
+    type = serializers.ChoiceField(choices=Facture.TYPES)
+    total = serializers.FloatField()
+    reste = serializers.FloatField()
+    status = serializers.ChoiceField(choices=Facture.STATUS_CHOICES, required=False, default='En attente')
+    client = serializers.PrimaryKeyRelatedField(queryset=Client.objects.all(), required=False, allow_null=True)
+    partenaire = serializers.PrimaryKeyRelatedField(queryset=Partenaire.objects.all(), required=False, allow_null=True)
+    boutique = serializers.PrimaryKeyRelatedField(queryset=Boutique.objects.all())
+    items = FactureLineItemSerializer(many=True)
+
+    def validate(self, data):
+        if data.get('type') == 'client' and not data.get('client'):
+            raise serializers.ValidationError("Un client doit être spécifié pour une facture client")
+        if data.get('type') == 'partenaire' and not data.get('partenaire'):
+            raise serializers.ValidationError("Un partenaire doit être spécifié pour une facture partenaire")
+        if not data.get('items'):
+            raise serializers.ValidationError("Aucune ligne de facture fournie")
         return data
 
 class CommandeClientSerializer(serializers.ModelSerializer):
