@@ -168,19 +168,19 @@ DATABASES = {
 }
 
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'murastorage$default',
-        'USER': 'murastorage',
-        'PASSWORD': 'Wilfried12',
-        'HOST': 'murastorage.mysql.pythonanywhere-services.com',
-        'PORT': '3306',
-        'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-        },
-    }
-}
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.mysql',
+#         'NAME': 'murastorage$default',
+#         'USER': 'murastorage',
+#         'PASSWORD': 'Wilfried12',
+#         'HOST': 'murastorage.mysql.pythonanywhere-services.com',
+#         'PORT': '3306',
+#         'OPTIONS': {
+#             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+#         },
+#     }
+# }
 
 
 # Password validation
@@ -267,16 +267,16 @@ CACHE_MIDDLEWARE_ALIAS = 'default'
 CACHE_MIDDLEWARE_SECONDS = 300  # 5 minutes
 CACHE_MIDDLEWARE_KEY_PREFIX = 'walner_durel'
 
-# Configuration Email — adresse officielle MuraStorage
+# Configuration Email — Gmail SMTP (whitelist PythonAnywhere)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.hostinger.com')
-EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '465'))
-EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'True') == 'True'
-EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'False') == 'True'
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
+EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'False') == 'True'
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = 'MuraStorage <support@murastorage.com>'
-SERVER_EMAIL = 'support@murastorage.com'
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', f'MuraStorage <{os.environ.get("EMAIL_HOST_USER", "noreply@murastorage.com")}>')
+SERVER_EMAIL = EMAIL_HOST_USER
 
 if not all([EMAIL_HOST, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD]) and not DEBUG:
     raise ValueError("Email configuration incomplete - EMAIL_HOST, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD must be set")

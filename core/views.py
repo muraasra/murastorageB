@@ -489,8 +489,9 @@ class EmailVerificationViewSet(viewsets.GenericViewSet):
             else:
                 return Response({
                     'success': False,
-                    'message': f'Erreur lors de l\'envoi: {result}'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    'message': 'Impossible d\'envoyer l\'email pour le moment. Veuillez réessayer dans quelques minutes ou contacter le support.',
+                    'detail': str(result)
+                }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
                 
         except User.DoesNotExist:
             return Response({

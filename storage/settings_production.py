@@ -45,18 +45,26 @@ CORS_ALLOWED_ORIGINS = [
     "https://murastorage.pythonanywhere.com",
 ]
 
-# Email production — Hostinger SMTP
-EMAIL_HOST = os.environ.get('EMAIL_HOST')
-EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '465'))
-EMAIL_USE_SSL = True
-EMAIL_USE_TLS = False
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
-DEFAULT_FROM_EMAIL = 'MuraStorage <support@murastorage.com>'
-SERVER_EMAIL = 'support@murastorage.com'
+# Email production
+# PythonAnywhere bloque smtp.hostinger.com (port 465) — utiliser Gmail ou un relai whitelist
+# Pour Gmail: EMAIL_HOST=smtp.gmail.com, EMAIL_PORT=587, EMAIL_USE_TLS=True, EMAIL_USE_SSL=False
+# + créer un App Password Google (Compte > Sécurité > Mots de passe des applications)
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+_port_str = os.environ.get('EMAIL_PORT', '587')
+EMAIL_PORT = int(_port_str) if _port_str else 587
+EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'False') == 'True'
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', f'MuraStorage <{EMAIL_HOST_USER}>')
+SERVER_EMAIL = EMAIL_HOST_USER
 
-if not all([EMAIL_HOST, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD]):
-    raise ValueError("Email configuration incomplete - EMAIL_HOST, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD must be set in environment variables")
+if not all([EMAIL_HOST_USER, EMAIL_HOST_PASSWORD]):
+    import logging
+    logging.getLogger('django').warning(
+        "Email non configuré (EMAIL_HOST_USER ou EMAIL_HOST_PASSWORD manquant) — "
+        "les emails de vérification ne seront pas envoyés."
+    )
 
 CORS_ALLOWED_ORIGINS = [
     "https://murastorage.pythonanywhere.com",
