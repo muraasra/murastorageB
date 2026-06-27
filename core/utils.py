@@ -7,6 +7,19 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import EmailVerification, User, Entreprise, Boutique
 
+
+def get_user_display_name(user):
+    """Nom affichable d'un utilisateur (prénom/nom ou username)."""
+    if not user:
+        return 'Utilisateur inconnu'
+    full = (user.get_full_name() or '').strip()
+    if full:
+        return full
+    if getattr(user, 'first_name', None):
+        return str(user.first_name).strip()
+    return getattr(user, 'username', None) or 'Utilisateur'
+
+
 def generate_verification_code():
     """Génère un code de vérification à 6 chiffres"""
     return ''.join(random.choices(string.digits, k=6))

@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
 from .views import *
 from .subscription_views import SubscriptionPlanViewSet, EntrepriseSubscriptionViewSet, UsageTrackingViewSet
+from .payment_views import PaymentViewSet, PlatformAdminViewSet
 from django.contrib import admin
 from django.urls import path,include
 
@@ -13,6 +14,7 @@ router.register(r'entreprises', EntrepriseViewSet)
 router.register(r'email-verification', EmailVerificationViewSet, basename='email-verification')
 router.register(r'boutiques', BoutiqueViewSet)
 router.register(r'produits', ProduitViewSet)
+router.register(r'variantes-produit', ProduitVarianteViewSet, basename='variante-produit')
 router.register(r'categories', CategorieViewSet)
 router.register(r'fournisseurs', FournisseurViewSet)
 router.register(r'stocks', StockViewSet)
@@ -31,9 +33,13 @@ router.register(r'users', UserViewSet)
 router.register(r'subscription-plans', SubscriptionPlanViewSet, basename='subscription-plans')
 router.register(r'subscriptions', EntrepriseSubscriptionViewSet, basename='subscriptions')
 router.register(r'usage-tracking', UsageTrackingViewSet, basename='usage-tracking')
+router.register(r'payments', PaymentViewSet, basename='payments')
+router.register(r'platform', PlatformAdminViewSet, basename='platform')
 # Routes pour les inventaires
 router.register(r'inventaires', InventaireViewSet, basename='inventaires')
 router.register(r'inventaires-produits', InventaireProduitViewSet, basename='inventaires-produits')
+# Routes pour les exercices fiscaux
+router.register(r'exercices-fiscaux', ExerciceFiscalViewSet, basename='exercices-fiscaux')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -41,6 +47,10 @@ urlpatterns = [
     path('auth/jwt/login/', CustomJWTTokenObtainPairView.as_view(), name='api_jwt_auth'),
     path('auth/jwt/refresh/', TokenRefreshView.as_view(), name='api_jwt_refresh'),
     path('auth/jwt/verify/', TokenVerifyView.as_view(), name='api_jwt_verify'),
+    # Alias standards SimpleJWT (compatibilité frontend)
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    path('auth/jwt/logout/', logout_view, name='api_jwt_logout'),
     path('contact/submit/', contact_form_submit, name='contact_form_submit'),
     # Password reset endpoints
     path('password-reset/request/', request_password_reset, name='password_reset_request'),

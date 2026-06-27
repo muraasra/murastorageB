@@ -34,12 +34,12 @@ def get_entreprise_subscription(entreprise):
             }
         )
         
-        # Créer l'abonnement avec période d'essai de 14 jours
+        # Créer l'abonnement avec période d'essai de 3 mois
         subscription = EntrepriseSubscription.objects.create(
             entreprise=entreprise,
             plan=free_plan,
             status='active',
-            trial_end_date=timezone.now() + timedelta(days=14)
+            trial_end_date=timezone.now() + timedelta(days=90)
         )
         return subscription
 

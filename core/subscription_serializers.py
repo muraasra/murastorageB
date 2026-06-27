@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import SubscriptionPlan, EntrepriseSubscription, UsageTracking
+from .models import SubscriptionPlan, EntrepriseSubscription, UsageTracking, PaymentTransaction
 
 class SubscriptionPlanSerializer(serializers.ModelSerializer):
     """Sérialiseur pour les plans d'abonnement"""
@@ -52,6 +52,22 @@ class SubscriptionLimitsSerializer(serializers.Serializer):
     support_level = serializers.CharField()
     price_monthly = serializers.DecimalField(max_digits=10, decimal_places=2)
     price_yearly = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+class PaymentTransactionSerializer(serializers.ModelSerializer):
+    plan_name = serializers.CharField(source='plan.display_name', read_only=True)
+    method_label = serializers.CharField(source='get_method_display', read_only=True)
+    status_label = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = PaymentTransaction
+        fields = [
+            'id', 'entreprise', 'plan', 'plan_name', 'amount', 'currency',
+            'method', 'method_label', 'status', 'status_label', 'billing_period',
+            'phone_number', 'card_last4', 'failure_reason', 'notes',
+            'created_at', 'paid_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'paid_at']
+
 
 class CurrentUsageSerializer(serializers.Serializer):
     """Sérialiseur pour l'utilisation actuelle"""

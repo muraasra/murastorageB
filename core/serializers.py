@@ -209,7 +209,14 @@ class EmailVerificationSerializer(serializers.ModelSerializer):
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """Serializer JWT personnalisé qui permet l'authentification par email et retourne le maximum d'informations utilisateur"""
-    
+
+    @classmethod
+    def get_token(cls, user):
+        """Injecte le rôle dans le payload JWT (signé côté serveur)."""
+        token = super().get_token(user)
+        token['role'] = user.role
+        return token
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Permettre l'authentification par email
@@ -243,6 +250,11 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         # Ajouter des informations supplémentaires à la réponse
         user = self.user
         
+        # Vérifier si l'email est vérifié
+        email_verified = EmailVerification.objects.filter(
+            user=user, status='verified'
+        ).exists()
+
         # Informations utilisateur de base
         user_data = {
             'id': user.id,
@@ -254,6 +266,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'telephone': user.telephone or '',
             'poste': user.poste or '',
             'is_active_employee': user.is_active_employee,
+            'email_verified': email_verified,
         }
         
         # Informations entreprise
@@ -265,9 +278,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'nom': user.entreprise.nom,
                 'secteur_activite': user.entreprise.secteur_activite,
                 'ville': user.entreprise.ville,
+                'email': user.entreprise.email,
+                'telephone': user.entreprise.telephone,
+                'adresse': user.entreprise.adresse,
+                'logo': user.entreprise.logo.url if user.entreprise.logo else None,
                 'pack_type': user.entreprise.pack_type,
                 'nombre_employes': user.entreprise.nombre_employes,
                 'annee_creation': user.entreprise.annee_creation,
+                'is_active': user.entreprise.is_active,
             }
         
         # Informations boutique
@@ -386,10 +404,40 @@ class FournisseurSerializer(serializers.ModelSerializer):
             validated_data['entreprise'] = instance.entreprise
         return super().update(instance, validated_data)
 
+class ProduitVarianteSerializer(serializers.ModelSerializer):
+    marge = serializers.ReadOnlyField()
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    stock_total = serializers.SerializerMethodField()
+
+    def get_stock_total(self, obj):
+        from django.db.models import Sum
+        result = obj.stocks.aggregate(total=Sum('quantite'))
+        return result['total'] or 0
+
+    def validate_code_barres(self, value):
+        # Convertir chaîne vide en null pour respecter l'unicité
+        return value if value and value.strip() else None
+
+    def validate_sku(self, value):
+        return value if value and value.strip() else None
+
+    class Meta:
+        model = ProduitVariante
+        fields = [
+            'id', 'produit', 'produit_nom', 'nom', 'attributs',
+            'sku', 'code_barres', 'prix_achat', 'prix_vente', 'prix_gros',
+            'marge', 'stock_total', 'actif', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'marge']
+
 class StockSerializer(serializers.ModelSerializer):
     entrepot_nom = serializers.CharField(source='entrepot.nom', read_only=True)
     quantite_disponible = serializers.ReadOnlyField()
-    
+    variante_nom = serializers.CharField(source='variante.nom', read_only=True, allow_null=True)
+    variante_prix_vente = serializers.DecimalField(source='variante.prix_vente', max_digits=10, decimal_places=2, read_only=True, allow_null=True)
+    variante_prix_achat = serializers.DecimalField(source='variante.prix_achat', max_digits=10, decimal_places=2, read_only=True, allow_null=True)
+    variante_sku = serializers.CharField(source='variante.sku', read_only=True, allow_null=True)
+
     class Meta:
         model = Stock
         fields = '__all__'
@@ -397,8 +445,13 @@ class StockSerializer(serializers.ModelSerializer):
 class MouvementStockSerializer(serializers.ModelSerializer):
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     entrepot_nom = serializers.CharField(source='entrepot.nom', read_only=True)
-    utilisateur_nom = serializers.CharField(source='utilisateur.get_full_name', read_only=True)
-    
+    variante_nom = serializers.CharField(source='variante.nom', read_only=True, allow_null=True)
+    utilisateur_nom = serializers.SerializerMethodField()
+
+    def get_utilisateur_nom(self, obj):
+        from .utils import get_user_display_name
+        return get_user_display_name(obj.utilisateur) if obj.utilisateur else '—'
+
     class Meta:
         model = MouvementStock
         fields = '__all__'
@@ -418,7 +471,14 @@ class ProduitSerializer(serializers.ModelSerializer):
     
     # Stocks par entrepôt
     stocks = StockSerializer(many=True, read_only=True)
-    
+
+    # Variantes
+    variantes = ProduitVarianteSerializer(many=True, read_only=True)
+    nb_variantes = serializers.SerializerMethodField()
+
+    def get_nb_variantes(self, obj):
+        return obj.variantes.filter(actif=True).count()
+
     class Meta:
         model = Produit
         fields = '__all__'
@@ -506,9 +566,35 @@ class PrixProduitSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class PartenaireSerializer(serializers.ModelSerializer):
+    boutique_nom = serializers.CharField(source='boutique.nom', read_only=True)
+    entreprise_nom = serializers.CharField(source='entreprise.nom', read_only=True)
+    solde_en_cours = serializers.SerializerMethodField()
+    depasse_limite = serializers.SerializerMethodField()
+
+    def get_solde_en_cours(self, obj):
+        """Somme des restes impayés sur toutes les factures partenaire"""
+        from django.db.models import Sum
+        result = obj.factures.filter(
+            type='partenaire'
+        ).aggregate(total_reste=Sum('reste'))
+        return round(result['total_reste'] or 0, 2)
+
+    def get_depasse_limite(self, obj):
+        """True si le solde dépasse la limite de crédit (et limite > 0)"""
+        if obj.limite_credit <= 0:
+            return False
+        from django.db.models import Sum
+        result = obj.factures.filter(type='partenaire').aggregate(total_reste=Sum('reste'))
+        solde = result['total_reste'] or 0
+        return solde > obj.limite_credit
+
     class Meta:
         model = Partenaire
         fields = '__all__'
+        extra_kwargs = {
+            'boutique': {'required': False, 'allow_null': True},
+            'entreprise': {'required': False, 'allow_null': True},
+        }
 
 class SequenceFactureSerializer(serializers.ModelSerializer):
     """Serializer pour le modèle SequenceFacture"""
@@ -551,7 +637,12 @@ class FactureSerializer(serializers.ModelSerializer):
     client_nom = serializers.SerializerMethodField()
     partenaire_nom = serializers.SerializerMethodField()
     created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+    created_by_nom = serializers.SerializerMethodField()
     boutique_nom = serializers.CharField(source='boutique.nom', read_only=True)
+
+    def get_created_by_nom(self, obj):
+        from .utils import get_user_display_name
+        return get_user_display_name(obj.created_by) if obj.created_by else None
     
     def get_client_nom(self, obj):
         """Récupérer le nom complet du client"""
@@ -577,13 +668,15 @@ class FactureSerializer(serializers.ModelSerializer):
     class Meta:
         model = Facture
         fields = ['id', 'type', 'numero', 'total', 'reste', 'status', 'client', 'partenaire',
-                 'client_nom', 'partenaire_nom', 'created_by', 'created_by_username',
+                 'client_nom', 'partenaire_nom', 'created_by', 'created_by_username', 'created_by_nom',
                  'entreprise', 'boutique', 'boutique_nom', 'created_at', 'updated_at']
         read_only_fields = ['id', 'numero', 'created_at', 'updated_at']
         extra_kwargs = {
-            'numero': {'required': False}  # Le numéro sera généré automatiquement
+            'numero': {'required': False},
+            # reste est calculé par le backend — ne pas accepter une valeur libre du client
+            'reste': {'read_only': True},
         }
-    
+
     def validate(self, data):
         """Validation personnalisée"""
         if data.get('type') == 'client' and not data.get('client'):
@@ -592,6 +685,11 @@ class FactureSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Un partenaire doit être spécifié pour une facture partenaire")
         return data
 
+    def create(self, validated_data):
+        """À la création, reste = total (aucun versement encore)."""
+        validated_data.setdefault('reste', validated_data.get('total', 0))
+        return super().create(validated_data)
+
 class FactureLineItemSerializer(serializers.Serializer):
     """Ligne de facture pour création transactionnelle"""
     produit = serializers.PrimaryKeyRelatedField(queryset=Produit.objects.all())
@@ -599,6 +697,16 @@ class FactureLineItemSerializer(serializers.Serializer):
     prix_unitaire_fcfa = serializers.FloatField(min_value=0)
     prix_initial_fcfa = serializers.FloatField(required=False, allow_null=True)
     justification_prix = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    variante = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate_variante(self, value):
+        if value is None:
+            return None
+        from .models import ProduitVariante
+        try:
+            return ProduitVariante.objects.get(pk=value)
+        except ProduitVariante.DoesNotExist:
+            raise serializers.ValidationError(f"Variante {value} introuvable.")
 
 class FactureTransactionSerializer(serializers.Serializer):
     """Payload pour créer facture + commandes + stock en transaction"""
@@ -625,6 +733,7 @@ class CommandeClientSerializer(serializers.ModelSerializer):
     total = serializers.ReadOnlyField()
     produit_nom = serializers.SerializerMethodField()
     produit_reference = serializers.SerializerMethodField()
+    variante_nom = serializers.CharField(source='variante.nom', read_only=True, allow_null=True)
     
     def get_produit_nom(self, obj):
         """Récupérer le nom du produit"""
@@ -649,7 +758,8 @@ class CommandeClientSerializer(serializers.ModelSerializer):
     class Meta:
         model = CommandeClient
         fields = ['id', 'facture', 'produit', 'produit_nom', 'produit_reference',
-                 'quantite', 'prix_unitaire_fcfa', 'prix_initial_fcfa', 'justification_prix', 
+                 'variante', 'variante_nom',
+                 'quantite', 'prix_unitaire_fcfa', 'prix_initial_fcfa', 'justification_prix',
                  'total', 'created_at']
         read_only_fields = ['id', 'total', 'created_at']
         extra_kwargs = {
@@ -696,6 +806,7 @@ class CommandePartenaireSerializer(serializers.ModelSerializer):
     total = serializers.ReadOnlyField()
     produit_nom = serializers.SerializerMethodField()
     produit_reference = serializers.SerializerMethodField()
+    variante_nom = serializers.CharField(source='variante.nom', read_only=True, allow_null=True)
     
     def get_produit_nom(self, obj):
         """Récupérer le nom du produit"""
@@ -720,7 +831,8 @@ class CommandePartenaireSerializer(serializers.ModelSerializer):
     class Meta:
         model = CommandePartenaire
         fields = ['id', 'facture', 'produit', 'produit_nom', 'produit_reference',
-                 'quantite', 'prix_unitaire_fcfa', 'prix_initial_fcfa', 'justification_prix', 
+                 'variante', 'variante_nom',
+                 'quantite', 'prix_unitaire_fcfa', 'prix_initial_fcfa', 'justification_prix',
                  'total', 'created_at']
         read_only_fields = ['id', 'total', 'created_at']
         extra_kwargs = {
@@ -788,7 +900,10 @@ class JournalSerializer(serializers.ModelSerializer):
         read_only_fields = ('date_operation',)
 
     def get_utilisateur_nom(self, obj):
-        return f"{obj.utilisateur.first_name} {obj.utilisateur.last_name}" if obj.utilisateur else obj.utilisateur.username
+        from .utils import get_user_display_name
+        if not obj.utilisateur:
+            return '—'
+        return get_user_display_name(obj.utilisateur)
 
     def get_boutique_nom(self, obj):
         return obj.boutique.nom if obj.boutique else None
@@ -861,3 +976,24 @@ class InventaireCreateSerializer(serializers.ModelSerializer):
         )
         
         return inventaire
+
+class ExerciceFiscalSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+    cloture_par_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExerciceFiscal
+        fields = [
+            'id', 'entreprise', 'annee', 'date_debut', 'date_fin', 'statut', 'statut_display',
+            'chiffre_affaires', 'total_achats', 'nb_factures', 'valeur_stock_cloture',
+            'nb_produits', 'benefice_net', 'cloture_par', 'cloture_par_nom',
+            'date_cloture', 'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['chiffre_affaires', 'total_achats', 'nb_factures',
+                            'valeur_stock_cloture', 'nb_produits', 'benefice_net',
+                            'cloture_par', 'date_cloture', 'created_at', 'updated_at']
+
+    def get_cloture_par_nom(self, obj):
+        if obj.cloture_par:
+            return f"{obj.cloture_par.first_name} {obj.cloture_par.last_name}".strip() or obj.cloture_par.username
+        return None

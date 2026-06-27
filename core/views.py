@@ -1,3 +1,4 @@
+from django.db import models as django_models
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -40,6 +41,36 @@ import string
 class CustomJWTTokenObtainPairView(TokenObtainPairView):
     """Vue d'authentification JWT personnalisée qui retourne le maximum d'informations"""
     serializer_class = CustomTokenObtainPairSerializer
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            try:
+                # Identifier l'utilisateur depuis les données de connexion
+                email_or_username = request.data.get('email') or request.data.get('username', '')
+                from django.contrib.auth import get_user_model
+                UserModel = get_user_model()
+                user = None
+                if '@' in str(email_or_username):
+                    user = UserModel.objects.filter(email=email_or_username).first()
+                else:
+                    user = UserModel.objects.filter(username=email_or_username).first()
+                if user:
+                    boutique = getattr(user, 'boutique', None)
+                    ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', ''))
+                    if ip and ',' in ip:
+                        ip = ip.split(',')[0].strip()
+                    Journal.objects.create(
+                        utilisateur=user,
+                        entreprise=getattr(boutique, 'entreprise', None) if boutique else None,
+                        boutique=boutique,
+                        type_operation='connexion',
+                        description=f"{user.get_full_name() or user.username} s'est connecté(e)",
+                        ip_address=ip or None,
+                    )
+            except Exception:
+                pass
+        return response
 
 # Serializer pour l'authentification Token avec support email
 class EmailAuthTokenSerializer(serializers.Serializer):
@@ -102,12 +133,12 @@ class CustomAuthTokenView(ObtainAuthToken):
             'boutique_nom': user.boutique.nom if user.boutique else None,
         })
 
-# Vue pour l'inscription d'entreprise
-class InscriptionEntrepriseViewSet(viewsets.ModelViewSet):
-    """ViewSet pour gérer l'inscription d'entreprise"""
+# Vue pour l'inscription d'entreprise (création uniquement — pas de list/retrieve/update/delete publics)
+class InscriptionEntrepriseViewSet(viewsets.mixins.CreateModelMixin, viewsets.GenericViewSet):
+    """ViewSet pour l'inscription d'entreprise — POST uniquement, sans authentification."""
     queryset = Entreprise.objects.all()
     serializer_class = EntrepriseCreateSerializer
-    permission_classes = [AllowAny]  # Permettre l'inscription sans authentification
+    permission_classes = [AllowAny]
 
 # Vue personnalisée pour la création d'utilisateurs avec envoi d'email
 class UserViewSet(viewsets.ModelViewSet):
@@ -365,9 +396,9 @@ class EntrepriseViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 # Vue pour la vérification d'email
-class EmailVerificationViewSet(viewsets.ModelViewSet):
-    """ViewSet pour gérer la vérification d'email"""
-    queryset = EmailVerification.objects.all()
+class EmailVerificationViewSet(viewsets.GenericViewSet):
+    """ViewSet pour la vérification d'email — actions personnalisées uniquement, pas de list/retrieve publics."""
+    queryset = EmailVerification.objects.none()
     serializer_class = EmailVerificationSerializer
     permission_classes = [AllowAny]
     
@@ -473,11 +504,13 @@ class EmailVerificationViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class FactureFilter(django_filters.FilterSet):
-    created_at = django_filters.DateFilter(method='filter_by_date')
+    created_at  = django_filters.DateFilter(method='filter_by_date')
+    date_debut  = django_filters.DateFilter(field_name='created_at', lookup_expr='date__gte')
+    date_fin    = django_filters.DateFilter(field_name='created_at', lookup_expr='date__lte')
 
     class Meta:
         model = Facture
-        fields = ['type', 'status', 'boutique', 'created_at']
+        fields = ['type', 'status', 'boutique', 'created_at', 'date_debut', 'date_fin', 'entreprise']
 
     def filter_by_date(self, queryset, name, value):
         return queryset.annotate(date_only=TruncDate('created_at')).filter(date_only=value)
@@ -495,14 +528,17 @@ class BoutiqueViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filtrer les boutiques par entreprise de l'utilisateur connecté"""
         queryset = super().get_queryset()
-        
-        # Filtrer par entreprise de l'utilisateur connecté
+
+        # Le superadmin voit toutes les boutiques (peut filtrer via ?entreprise=id)
+        if self.request.user.role == 'superadmin':
+            return queryset.select_related('entreprise')
+
+        # Admin/user : uniquement les boutiques de leur entreprise
         if self.request.user.entreprise:
             queryset = queryset.filter(entreprise=self.request.user.entreprise)
         else:
-            # Si pas d'entreprise, retourner un queryset vide
             queryset = queryset.none()
-        
+
         return queryset.select_related('entreprise')
 
     def get_permissions(self):
@@ -551,12 +587,12 @@ class CategorieViewSet(viewsets.ModelViewSet):
     ordering_fields = ['nom', 'created_at']
     
     def get_queryset(self):
-        """Filtrer les catégories par entreprise de l'utilisateur connecté"""
+        """Filtrer les catégories par entreprise de l'utilisateur connecté (tous rôles)."""
         queryset = super().get_queryset()
-        
-        if self.request.user.role == 'superadmin' and self.request.user.entreprise:
+        if self.request.user.entreprise:
             queryset = queryset.filter(entreprise=self.request.user.entreprise)
-        
+        else:
+            queryset = queryset.none()
         return queryset.select_related('parent', 'entreprise')
 
     def perform_create(self, serializer):
@@ -603,12 +639,12 @@ class FournisseurViewSet(viewsets.ModelViewSet):
     ordering_fields = ['nom', 'created_at']
     
     def get_queryset(self):
-        """Filtrer les fournisseurs par entreprise de l'utilisateur connecté"""
+        """Filtrer les fournisseurs par entreprise de l'utilisateur connecté (tous rôles)."""
         queryset = super().get_queryset()
-        
-        if self.request.user.role == 'superadmin' and self.request.user.entreprise:
+        if self.request.user.entreprise:
             queryset = queryset.filter(entreprise=self.request.user.entreprise)
-        
+        else:
+            queryset = queryset.none()
         return queryset.select_related('entreprise')
 
     def perform_create(self, serializer):
@@ -644,45 +680,48 @@ class FournisseurViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print(f"Erreur invalidation cache fournisseurs destroy: {e}")
 
+# Variantes produit : gestion des variantes (taille, couleur, etc.)
+class ProduitVarianteViewSet(viewsets.ModelViewSet):
+    queryset = ProduitVariante.objects.select_related('produit')
+    serializer_class = ProduitVarianteSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['produit', 'actif']
+    search_fields = ['nom', 'sku', 'code_barres']
+    ordering_fields = ['nom', 'prix_vente', 'created_at']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.role == 'superadmin':
+            return qs
+        if user.entreprise:
+            return qs.filter(produit__entreprise=user.entreprise)
+        if user.boutique and user.boutique.entreprise:
+            return qs.filter(produit__entreprise=user.boutique.entreprise)
+        return qs.none()
+
 # Stock : gestion des stocks par entrepôt
 class StockViewSet(viewsets.ModelViewSet):
     queryset = Stock.objects.all()
     serializer_class = StockSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['produit', 'entrepot']
+    filterset_fields = ['produit', 'entrepot', 'variante']
     search_fields = ['produit__nom', 'emplacement']
     ordering_fields = ['quantite', 'updated_at']
-    # pagination_class = SmartPagination  # Désactivé pour maintenir la compatibilité
-    
-    @cache_api_response(timeout=180, key_prefix='stocks')
-    def list(self, request, *args, **kwargs):
-        """Liste des stocks avec cache"""
-        return super().list(request, *args, **kwargs)
-    
+
     def get_queryset(self):
-        """Filtrer les stocks par entreprise de l'utilisateur connecté avec optimisations"""
+        """Filtrer les stocks par entreprise de l'utilisateur connecté"""
         queryset = super().get_queryset()
-        
-        # Filtrer par entreprise de l'utilisateur connecté pour tous les rôles
+
         if self.request.user.entreprise:
             queryset = queryset.filter(entrepot__entreprise=self.request.user.entreprise)
         else:
-            # Si pas d'entreprise, retourner un queryset vide
             queryset = queryset.none()
-        
-        # Optimisations de performance
+
         return queryset.select_related(
-            'produit', 
-            'entrepot', 
-            'entrepot__entreprise'
-        ).prefetch_related(
-            'produit__categorie'
-        ).only(
-            'id', 'quantite', 'emplacement', 'created_at', 'updated_at',
-            'produit__id', 'produit__nom', 'produit__prix_vente', 'produit__prix_achat',
-            'entrepot__id', 'entrepot__nom', 'entrepot__ville',
-            'entrepot__entreprise__id', 'entrepot__entreprise__nom'
+            'produit', 'entrepot', 'entrepot__entreprise', 'variante'
         )
 
     def perform_create(self, serializer):
@@ -732,7 +771,7 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
     serializer_class = MouvementStockSerializer
     permission_classes = [IsAdminOrSuperAdmin]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['produit', 'entrepot', 'type_mouvement', 'utilisateur']
+    filterset_fields = ['produit', 'entrepot', 'type_mouvement', 'utilisateur', 'variante']
     search_fields = ['produit__nom', 'motif', 'reference_document']
     ordering_fields = ['created_at', 'quantite']
     
@@ -749,6 +788,67 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
         
         return queryset.select_related('produit', 'entrepot', 'utilisateur', 'entrepot__entreprise')
     
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'transfert_stock'):
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAdminOrSuperAdmin]
+        return [permission() for permission in permission_classes]
+    
+    def create(self, request, *args, **kwargs):
+        from .models import Stock, ProduitVariante
+        from django.db import transaction
+
+        produit_id = request.data.get('produit')
+        entrepot_id = request.data.get('entrepot')
+        variante_id = request.data.get('variante') or None
+        type_mouvement = request.data.get('type_mouvement', 'entree')
+        quantite = int(request.data.get('quantite', 0))
+
+        if not produit_id or not entrepot_id or quantite < 1:
+            return Response({'error': 'produit, entrepot et quantite sont requis'}, status=400)
+
+        with transaction.atomic():
+            # Récupérer ou créer le stock approprié
+            stock_filter = dict(produit_id=produit_id, entrepot_id=entrepot_id)
+            if variante_id:
+                stock_filter['variante_id'] = variante_id
+            else:
+                stock_filter['variante__isnull'] = True
+
+            stock = Stock.objects.select_for_update().filter(**stock_filter).first()
+            if not stock:
+                create_kwargs = dict(produit_id=produit_id, entrepot_id=entrepot_id, quantite=0)
+                if variante_id:
+                    create_kwargs['variante_id'] = variante_id
+                stock = Stock.objects.create(**create_kwargs)
+
+            quantite_avant = stock.quantite
+            if type_mouvement == 'entree':
+                quantite_apres = quantite_avant + quantite
+            elif type_mouvement == 'sortie':
+                quantite_apres = max(0, quantite_avant - quantite)
+            elif type_mouvement == 'ajustement':
+                quantite_apres = quantite
+            else:
+                quantite_apres = quantite_avant + quantite
+
+            stock.quantite = quantite_apres
+            stock.save(update_fields=['quantite', 'updated_at'])
+
+            # Construire la data enrichie pour le serializer
+            data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+            data['quantite_avant'] = quantite_avant
+            data['quantite_apres'] = quantite_apres
+            if variante_id:
+                data['variante'] = variante_id
+
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     def perform_create(self, serializer):
         """Associer automatiquement l'utilisateur connecté au mouvement"""
         mouvement = serializer.save(utilisateur=self.request.user)
@@ -763,7 +863,7 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print(f"Erreur invalidation cache mouvements: {e}")
     
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_path='transfert')
     def transfert_stock(self, request):
         """Effectuer un transfert de stock entre entrepôts avec envoi d'emails"""
         try:
@@ -891,13 +991,11 @@ class ProduitViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminOrSuperAdmin]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['entreprise', 'actif', 'categorie', 'fournisseur_principal', 'etat_produit']
-    search_fields = ['nom', 'sku', 'code_barres', 'description', 'marque', 'modele']
+    search_fields = ['nom', 'sku', 'reference', 'code_barres', 'description', 'marque', 'modele']
     ordering_fields = ['nom', 'prix_vente', 'quantite', 'created_at']
     # pagination_class = SmartPagination  # Désactivé pour maintenir la compatibilité
     
-    @cache_api_response(timeout=300, key_prefix='produits')
     def list(self, request, *args, **kwargs):
-        """Liste des produits avec cache"""
         return super().list(request, *args, **kwargs)
     
     def get_queryset(self):
@@ -911,55 +1009,22 @@ class ProduitViewSet(viewsets.ModelViewSet):
             # Si pas d'entreprise, retourner un queryset vide
             queryset = queryset.none()
         
-        # Optimisations avec select_related et prefetch_related
         return queryset.select_related(
-            'categorie', 
-            'entreprise', 
+            'categorie',
+            'entreprise',
             'fournisseur_principal'
-        ).prefetch_related('stocks').only(
-            'id', 'sku', 'nom', 'description', 'prix_achat', 'prix_vente', 'prix_gros',
-            'quantite', 'stock_minimum', 'stock_maximum', 'actif', 'created_at',
-            'categorie__id', 'categorie__nom',
-            'entreprise__id', 'entreprise__nom',
-            'fournisseur_principal__id', 'fournisseur_principal__nom',
-            'emplacement', 'details'
-        )
+        ).prefetch_related('stocks', 'variantes')
     
-    def perform_create(self, serializer):
-        """Créer un produit et invalider le cache"""
-        instance = serializer.save()
-        # Invalider le cache des produits de l'entreprise
-        if instance.entreprise:
-            CacheManager.invalidate_produits_cache(instance.entreprise.id)
-        return instance
-    
-    def perform_update(self, serializer):
-        """Mettre à jour un produit et invalider le cache + PROTÉGER l'entreprise"""
-        # PROTECTION: Récupérer l'instance existante et forcer l'entreprise
-        instance = self.get_object()
-        
-        # Si l'entreprise a changé, la restaurer à sa valeur originale
-        if 'entreprise' in serializer.validated_data:
-            serializer.validated_data['entreprise'] = instance.entreprise
-        
-        # Sauvegarder et invalider le cache
-        instance = serializer.save()
-        if instance.entreprise:
-            CacheManager.invalidate_produits_cache(instance.entreprise.id)
-        return instance
-    
-    def perform_destroy(self, instance):
-        """Supprimer un produit et invalider le cache"""
-        entreprise_id = instance.entreprise.id if instance.entreprise else None
-        instance.delete()
-        # Invalider le cache des produits de l'entreprise
-        if entreprise_id:
-            CacheManager.invalidate_produits_cache(entreprise_id)
-
     def get_permissions(self):
         """Permissions dynamiques selon l'action"""
-        if self.action == 'create':
+        if self.action in ('list', 'retrieve', 'stats'):
+            permission_classes = [IsAuthenticated]
+        elif self.action == 'create':
             permission_classes = [IsAdminOrSuperAdmin, CanCreateProduit]
+        elif self.action == 'import_produits':
+            permission_classes = [IsAdminOrSuperAdmin, CanImportCSV]
+        elif self.action == 'export_produits':
+            permission_classes = [IsAdminOrSuperAdmin, CanExportCSV]
         else:
             permission_classes = [IsAdminOrSuperAdmin]
         return [permission() for permission in permission_classes]
@@ -1202,6 +1267,32 @@ class ProduitViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def stats(self, request):
+        """Agrégats stock calculés côté backend pour le dashboard."""
+        from django.db.models import Sum, Count, F, ExpressionWrapper, FloatField
+        qs = self.get_queryset()
+        totals = qs.aggregate(
+            total_produits=Count('id'),
+            total_unites=Sum('quantite'),
+            valeur_stock=Sum(
+                ExpressionWrapper(F('quantite') * F('prix_vente'), output_field=FloatField())
+            ),
+            nb_rupture=Count('id', filter=django_models.Q(quantite=0)),
+            nb_critique=Count('id', filter=django_models.Q(quantite__gt=0, quantite__lt=10)),
+            nb_faible=Count('id', filter=django_models.Q(quantite__gte=10, quantite__lt=50)),
+            nb_normal=Count('id', filter=django_models.Q(quantite__gte=50)),
+        )
+        return Response({
+            'total_produits': totals['total_produits'] or 0,
+            'total_unites': totals['total_unites'] or 0,
+            'valeur_stock': round(totals['valeur_stock'] or 0, 2),
+            'nb_rupture': totals['nb_rupture'] or 0,
+            'nb_critique': totals['nb_critique'] or 0,
+            'nb_faible': totals['nb_faible'] or 0,
+            'nb_normal': totals['nb_normal'] or 0,
+        })
+
 # PrixProduit : visible uniquement par superadmin
 class PrixProduitViewSet(viewsets.ModelViewSet):
     queryset = PrixProduit.objects.all()
@@ -1224,10 +1315,12 @@ class SequenceFactureViewSet(viewsets.ModelViewSet):
     ordering = ['boutique', 'annee', 'mois']
     
     def get_queryset(self):
-        """Filtrer les séquences par entreprise pour les superadmins"""
+        """Filtrer les séquences par entreprise (tous rôles)."""
         queryset = super().get_queryset()
-        if self.request.user.role == 'superadmin' and self.request.user.entreprise:
+        if self.request.user.entreprise:
             queryset = queryset.filter(boutique__entreprise=self.request.user.entreprise)
+        else:
+            queryset = queryset.none()
         return queryset.select_related('boutique')
     
     @action(detail=False, methods=['get'])
@@ -1261,18 +1354,17 @@ class ClientViewSet(viewsets.ModelViewSet):
     ordering = ['nom', 'prenom']
     
     def get_queryset(self):
-        """Filtrer les clients par entreprise de l'utilisateur connecté"""
+        """Filtrer les clients par entreprise de l'utilisateur connecté (tous rôles)."""
         queryset = super().get_queryset()
-        
-        # Si l'utilisateur connecté est un SuperAdmin, filtrer par son entreprise
-        if self.request.user.role == 'superadmin' and self.request.user.entreprise:
+        if self.request.user.entreprise:
             queryset = queryset.filter(entreprise=self.request.user.entreprise)
-        
+        else:
+            queryset = queryset.none()
         return queryset.select_related('entreprise', 'boutique')
     
     def perform_create(self, serializer):
-        """Créer un client avec l'entreprise de l'utilisateur connecté"""
-        if self.request.user.role == 'superadmin' and self.request.user.entreprise:
+        """Créer un client avec l'entreprise de l'utilisateur connecté (tous rôles)."""
+        if self.request.user.entreprise:
             serializer.save(entreprise=self.request.user.entreprise)
         else:
             serializer.save()
@@ -1296,9 +1388,41 @@ class PartenaireViewSet(viewsets.ModelViewSet):
     queryset = Partenaire.objects.all()
     serializer_class = PartenaireSerializer
     permission_classes = [IsAdminOrSuperAdmin]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['boutique']
-    search_fields = ['nom']
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['statut', 'boutique']
+    search_fields = ['nom', 'prenom', 'telephone']
+    ordering_fields = ['nom', 'dateadhesion']
+
+    def get_queryset(self):
+        """Filtrer les partenaires par boutique de l'utilisateur connecté."""
+        queryset = super().get_queryset()
+        user = self.request.user
+        if user.boutique:
+            queryset = queryset.filter(boutique=user.boutique)
+        elif user.entreprise:
+            # Filtre par toutes les boutiques de l'entreprise
+            queryset = queryset.filter(boutique__entreprise=user.entreprise)
+        else:
+            queryset = queryset.none()
+        return queryset
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAdminOrSuperAdmin]
+        return [permission() for permission in permission_classes]
+
+    def perform_create(self, serializer):
+        """Forcer la boutique et l'entreprise lors de la création."""
+        user = self.request.user
+        kwargs = {}
+        if user.boutique:
+            kwargs['boutique'] = user.boutique
+            kwargs['entreprise'] = user.boutique.entreprise
+        elif user.entreprise:
+            kwargs['entreprise'] = user.entreprise
+        serializer.save(**kwargs)
 
 # Facture : filtrable par type, boutique, status
 class FactureViewSet(viewsets.ModelViewSet):
@@ -1313,20 +1437,29 @@ class FactureViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filtrer les factures par entreprise de l'utilisateur connecté"""
         queryset = super().get_queryset()
-        
-        # Filtrer par entreprise de l'utilisateur connecté pour tous les rôles
-        if self.request.user.entreprise:
-            queryset = queryset.filter(boutique__entreprise=self.request.user.entreprise)
+        user = self.request.user
+
+        # Superadmin : peut filtrer par boutique ou entreprise via query params
+        if user.role == 'superadmin':
+            boutique_id = self.request.query_params.get('boutique')
+            entreprise_id = self.request.query_params.get('entreprise')
+            if boutique_id:
+                queryset = queryset.filter(boutique_id=boutique_id)
+            elif entreprise_id:
+                queryset = queryset.filter(boutique__entreprise_id=entreprise_id)
+        elif user.entreprise:
+            queryset = queryset.filter(boutique__entreprise=user.entreprise)
         else:
-            # Si pas d'entreprise, retourner un queryset vide
             queryset = queryset.none()
-        
+
         return queryset.select_related('boutique', 'boutique__entreprise', 'created_by', 'client', 'partenaire')
 
     def get_permissions(self):
         """Permissions dynamiques selon l'action"""
-        if self.action == 'create':
-            permission_classes = [IsAdminOrSuperAdmin, CanCreateFacture]
+        if self.action in ('list', 'retrieve'):
+            permission_classes = [IsAuthenticated]
+        elif self.action in ('create', 'create_with_stock'):
+            permission_classes = [IsAuthenticated, CanCreateFacture]
         else:
             permission_classes = [IsAdminOrSuperAdmin]
         return [permission() for permission in permission_classes]
@@ -1369,25 +1502,37 @@ class FactureViewSet(viewsets.ModelViewSet):
 
         items = data['items']
         produit_ids = [item['produit'].id for item in items]
+        variante_ids = [item['variante'].id for item in items if item.get('variante')]
 
         with transaction.atomic():
-            # Verrouiller les stocks concernés
+            # Verrouiller les stocks concernés — produit-niveau ET variante-niveau
             stocks_qs = Stock.objects.select_for_update().filter(
                 entrepot=boutique,
                 produit_id__in=produit_ids
             )
-            stocks_map = {s.produit_id: s for s in stocks_qs}
+            # Clé : (produit_id, variante_id) — None pour produit sans variante
+            stocks_map = {}
+            for s in stocks_qs:
+                key = (s.produit_id, s.variante_id)
+                stocks_map[key] = s
+
+            def get_stock(item):
+                v = item.get('variante')
+                key = (item['produit'].id, v.id if v else None)
+                return stocks_map.get(key)
 
             # Vérifier stock suffisant
             for item in items:
-                stock = stocks_map.get(item['produit'].id)
+                stock = get_stock(item)
+                v = item.get('variante')
+                label = f"{item['produit'].nom}{(' — ' + v.nom) if v else ''}"
                 if not stock:
                     raise serializers.ValidationError(
-                        f"Stock introuvable pour {item['produit'].nom}"
+                        f"Stock introuvable pour {label}"
                     )
                 if stock.quantite < item['quantite']:
                     raise serializers.ValidationError(
-                        f"Stock insuffisant pour {item['produit'].nom} (disponible: {stock.quantite})"
+                        f"Stock insuffisant pour {label} (disponible: {stock.quantite})"
                     )
 
             # Créer la facture
@@ -1403,50 +1548,58 @@ class FactureViewSet(viewsets.ModelViewSet):
                 entreprise=boutique.entreprise
             )
 
+            # Enregistrer le versement initial saisi à la facturation
+            montant_verse_initial = float(data['total']) - float(data['reste'])
+            if montant_verse_initial > 0:
+                Versement.objects.create(
+                    facture=facture,
+                    montant=montant_verse_initial,
+                    created_by=request.user,
+                    boutique=boutique,
+                )
+
             commandes = []
             mouvements = []
 
             # Créer commandes + mouvements + mise à jour stock
             for item in items:
-                stock = stocks_map[item['produit'].id]
+                variante = item.get('variante')
+                stock = get_stock(item)
                 quantite_avant = stock.quantite
                 quantite_apres = quantite_avant - item['quantite']
 
+                commande_kwargs = dict(
+                    facture=facture,
+                    produit=item['produit'],
+                    variante=variante,
+                    quantite=item['quantite'],
+                    prix_unitaire_fcfa=item['prix_unitaire_fcfa'],
+                    prix_initial_fcfa=item.get('prix_initial_fcfa') or item['prix_unitaire_fcfa'],
+                    justification_prix=item.get('justification_prix') or ''
+                )
                 if data['type'] == 'client':
-                    commande = CommandeClient.objects.create(
-                        facture=facture,
-                        produit=item['produit'],
-                        quantite=item['quantite'],
-                        prix_unitaire_fcfa=item['prix_unitaire_fcfa'],
-                        prix_initial_fcfa=item.get('prix_initial_fcfa') or item['prix_unitaire_fcfa'],
-                        justification_prix=item.get('justification_prix') or ''
-                    )
+                    commande = CommandeClient.objects.create(**commande_kwargs)
                 else:
-                    commande = CommandePartenaire.objects.create(
-                        facture=facture,
-                        produit=item['produit'],
-                        quantite=item['quantite'],
-                        prix_unitaire_fcfa=item['prix_unitaire_fcfa'],
-                        prix_initial_fcfa=item.get('prix_initial_fcfa') or item['prix_unitaire_fcfa'],
-                        justification_prix=item.get('justification_prix') or ''
-                    )
+                    commande = CommandePartenaire.objects.create(**commande_kwargs)
 
                 commandes.append(commande)
 
                 # Mettre à jour le stock
                 stock.quantite = quantite_apres
-                stock.save()
+                stock.save(update_fields=['quantite', 'updated_at'])
 
                 # Créer mouvement stock
                 mouvement = MouvementStock.objects.create(
                     produit=item['produit'],
+                    variante=variante,
                     entrepot=boutique,
                     type_mouvement='sortie',
                     quantite=item['quantite'],
                     quantite_avant=quantite_avant,
                     quantite_apres=quantite_apres,
                     motif=f"Vente - Facture {facture.numero}",
-                    reference_document=facture.numero
+                    reference_document=facture.numero,
+                    utilisateur=request.user,
                 )
                 mouvements.append(mouvement)
 
@@ -1533,9 +1686,225 @@ class FactureViewSet(viewsets.ModelViewSet):
             }
         )
 
+    @action(detail=True, methods=['post'], url_path='annuler', permission_classes=[IsAdminOrSuperAdmin])
+    def annuler_facture(self, request, pk=None):
+        """Annuler une facture et remettre le stock"""
+        facture = self.get_object()
+
+        if facture.status == 'Annulée':
+            return Response({'error': 'Cette facture est déjà annulée.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            # Récupérer toutes les commandes
+            if facture.type == 'client':
+                commandes = list(facture.commandes_client.select_related('produit').all())
+            else:
+                commandes = list(facture.commandes_partenaire.select_related('produit').all())
+
+            for commande in commandes:
+                # Retrouver ou créer le stock
+                stock = Stock.objects.select_for_update().filter(
+                    entrepot=facture.boutique,
+                    produit=commande.produit
+                ).first()
+
+                if stock:
+                    quantite_avant = stock.quantite
+                    stock.quantite += commande.quantite
+                    stock.save()
+
+                    MouvementStock.objects.create(
+                        produit=commande.produit,
+                        entrepot=facture.boutique,
+                        type_mouvement='entree',
+                        quantite=commande.quantite,
+                        quantite_avant=quantite_avant,
+                        quantite_apres=stock.quantite,
+                        motif=f"Annulation facture {facture.numero}",
+                        reference_document=facture.numero,
+                        utilisateur=request.user,
+                    )
+
+            # Annuler la facture
+            facture.status = 'Annulée'
+            facture.save()
+
+            # Journal
+            try:
+                create_journal_entry(
+                    user=request.user,
+                    type_operation='modification',
+                    description=f"Annulation de la facture {facture.numero}",
+                    boutique=facture.boutique,
+                    details={
+                        'facture_id': facture.id,
+                        'numero': facture.numero,
+                        'type': facture.type,
+                        'total': facture.total,
+                        'nb_produits': len(commandes)
+                    }
+                )
+            except Exception:
+                pass
+
+            # Invalidation cache
+            try:
+                CacheManager.invalidate_api_prefix('factures')
+                CacheManager.invalidate_api_prefix('stocks')
+                CacheManager.invalidate_api_prefix('mouvements-stock')
+            except Exception:
+                pass
+
+        return Response({'success': True, 'message': f'Facture {facture.numero} annulée avec succès.'})
+
+    @action(detail=False, methods=['get'], url_path='analytics', permission_classes=[IsAuthenticated])
+    def analytics(self, request):
+        """
+        Statistiques CA par période (jour/semaine/mois).
+        Params: date_debut, date_fin, boutique, granularite (jour|semaine|mois)
+        """
+        from django.db.models import Sum, Count, Q, F
+        from django.db.models.functions import TruncDay, TruncWeek, TruncMonth
+        from datetime import datetime, timedelta
+        import json
+
+        boutique_id = request.query_params.get('boutique')
+        date_debut_str = request.query_params.get('date_debut')
+        date_fin_str = request.query_params.get('date_fin')
+        granularite = request.query_params.get('granularite', 'jour')
+
+        qs = self.get_queryset().exclude(status='Annulée')
+
+        if boutique_id:
+            qs = qs.filter(boutique_id=boutique_id)
+
+        # Période par défaut : 30 derniers jours
+        now = timezone.now()
+        if date_debut_str:
+            try:
+                date_debut = datetime.strptime(date_debut_str, '%Y-%m-%d').date()
+            except ValueError:
+                date_debut = (now - timedelta(days=30)).date()
+        else:
+            date_debut = (now - timedelta(days=30)).date()
+
+        if date_fin_str:
+            try:
+                date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d').date()
+            except ValueError:
+                date_fin = now.date()
+        else:
+            date_fin = now.date()
+
+        qs = qs.filter(created_at__date__gte=date_debut, created_at__date__lte=date_fin)
+
+        # Choisir la granularité
+        trunc_fn = {'semaine': TruncWeek, 'mois': TruncMonth}.get(granularite, TruncDay)
+
+        serie = (
+            qs.annotate(periode=trunc_fn('created_at'))
+            .values('periode')
+            .annotate(
+                ca=Sum('total'),
+                nb_factures=Count('id'),
+                montant_verse=Sum('total') - Sum('reste'),
+            )
+            .order_by('periode')
+        )
+
+        # KPIs globaux de la période
+        totaux = qs.aggregate(
+            ca_total=Sum('total'),
+            total_verse=Sum('total') - Sum('reste'),
+            total_reste=Sum('reste'),
+            nb_factures=Count('id'),
+            nb_payees=Count('id', filter=Q(status='Payé')),
+            nb_partielles=Count('id', filter=Q(status='Partiellement payé')),
+            nb_attente=Count('id', filter=Q(status='En attente')),
+        )
+
+        ca_clients = qs.filter(type='client').aggregate(ca=Sum('total'))['ca'] or 0
+        ca_partenaires = qs.filter(type='partenaire').aggregate(ca=Sum('total'))['ca'] or 0
+
+        # Top 5 produits (par CA) via commandes_client + commandes_partenaire
+        from .models import CommandeClient, CommandePartenaire
+        facture_ids = list(qs.values_list('id', flat=True))
+
+        top_produits_client = (
+            CommandeClient.objects.filter(facture_id__in=facture_ids)
+            .values('produit__nom')
+            .annotate(ca=Sum(F('quantite') * F('prix_unitaire_fcfa')), qte=Sum('quantite'))
+            .order_by('-ca')[:5]
+        )
+        top_produits_partenaire = (
+            CommandePartenaire.objects.filter(facture_id__in=facture_ids)
+            .values('produit__nom')
+            .annotate(ca=Sum(F('quantite') * F('prix_unitaire_fcfa')), qte=Sum('quantite'))
+            .order_by('-ca')[:5]
+        )
+
+        # Fusionner + trier top produits
+        produits_dict = {}
+        for p in list(top_produits_client) + list(top_produits_partenaire):
+            nom = p['produit__nom']
+            if nom not in produits_dict:
+                produits_dict[nom] = {'nom': nom, 'ca': 0, 'qte': 0}
+            produits_dict[nom]['ca'] += p['ca'] or 0
+            produits_dict[nom]['qte'] += p['qte'] or 0
+        top_produits = sorted(produits_dict.values(), key=lambda x: x['ca'], reverse=True)[:5]
+
+        # Top 5 clients
+        top_clients = (
+            qs.filter(type='client', client__isnull=False)
+            .values('client__nom', 'client__prenom')
+            .annotate(ca=Sum('total'), nb=Count('id'))
+            .order_by('-ca')[:5]
+        )
+
+        # Top 5 partenaires
+        top_partenaires = (
+            qs.filter(type='partenaire', partenaire__isnull=False)
+            .values('partenaire__nom', 'partenaire__prenom')
+            .annotate(ca=Sum('total'), nb=Count('id'))
+            .order_by('-ca')[:5]
+        )
+
+        return Response({
+            'periode': {'debut': str(date_debut), 'fin': str(date_fin), 'granularite': granularite},
+            'kpis': {
+                'ca_total': round(totaux['ca_total'] or 0, 2),
+                'total_verse': round(totaux['total_verse'] or 0, 2),
+                'total_reste': round(totaux['total_reste'] or 0, 2),
+                'nb_factures': totaux['nb_factures'] or 0,
+                'nb_payees': totaux['nb_payees'] or 0,
+                'nb_partielles': totaux['nb_partielles'] or 0,
+                'nb_attente': totaux['nb_attente'] or 0,
+                'ca_clients': round(ca_clients, 2),
+                'ca_partenaires': round(ca_partenaires, 2),
+            },
+            'serie': [
+                {
+                    'date': s['periode'].strftime('%Y-%m-%d') if s['periode'] else None,
+                    'ca': round(s['ca'] or 0, 2),
+                    'nb_factures': s['nb_factures'] or 0,
+                    'montant_verse': round(s['montant_verse'] or 0, 2),
+                }
+                for s in serie
+            ],
+            'top_produits': list(top_produits),
+            'top_clients': [
+                {'nom': f"{c['client__prenom']} {c['client__nom']}".strip(), 'ca': round(c['ca'] or 0, 2), 'nb': c['nb']}
+                for c in top_clients
+            ],
+            'top_partenaires': [
+                {'nom': f"{p['partenaire__prenom']} {p['partenaire__nom']}".strip(), 'ca': round(p['ca'] or 0, 2), 'nb': p['nb']}
+                for p in top_partenaires
+            ],
+        })
+
 # Commande Client
 class CommandeClientViewSet(viewsets.ModelViewSet):
-    queryset = CommandeClient.objects.all()
+    queryset = CommandeClient.objects.select_related('produit', 'variante', 'facture').all()
     serializer_class = CommandeClientSerializer
     permission_classes = [IsAdminOrSuperAdmin]
     filter_backends = [DjangoFilterBackend]
@@ -1569,7 +1938,7 @@ class CommandeClientViewSet(viewsets.ModelViewSet):
 
 # Commande Partenaire
 class CommandePartenaireViewSet(viewsets.ModelViewSet):
-    queryset = CommandePartenaire.objects.all()
+    queryset = CommandePartenaire.objects.select_related('produit', 'variante', 'facture').all()
     serializer_class = CommandePartenaireSerializer
     permission_classes = [IsAdminOrSuperAdmin]
     filter_backends = [DjangoFilterBackend]
@@ -1610,18 +1979,44 @@ class CommandePartenaireViewSet(viewsets.ModelViewSet):
 class VersementViewSet(viewsets.ModelViewSet):
     queryset = Versement.objects.all()
     serializer_class = VersementSerializer
-    permission_classes = [IsAdminOrSuperAdmin]
+    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['facture']
 
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'create'):
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAdminOrSuperAdmin]
+        return [permission() for permission in permission_classes]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.role == 'superadmin':
+            return qs
+        if user.entreprise:
+            return qs.filter(facture__boutique__entreprise=user.entreprise)
+        return qs.none()
+
     def perform_create(self, serializer):
-        # Récupérer la boutique de l'utilisateur connecté
+        from django.db.models import Sum
         boutique = self.request.user.boutique if hasattr(self.request.user, 'boutique') else None
         if not boutique:
-            # Si l'utilisateur n'a pas de boutique, utiliser celle de la facture
             boutique = serializer.validated_data['facture'].boutique
-        
+
         instance = serializer.save(created_by=self.request.user, boutique=boutique)
+
+        # Recalculer reste et statut automatiquement à partir de tous les versements
+        facture = instance.facture
+        total_verse = facture.versements.aggregate(total=Sum('montant'))['total'] or 0
+        facture.reste = max(0.0, float(facture.total) - float(total_verse))
+        if facture.reste <= 0:
+            facture.status = 'Payé'
+        elif total_verse > 0:
+            facture.status = 'Partiellement payé'
+        facture.save(update_fields=['reste', 'status'])
+
         create_journal_entry(
             user=self.request.user,
             type_operation='modification',
@@ -1630,8 +2025,9 @@ class VersementViewSet(viewsets.ModelViewSet):
             details={
                 'versement_id': instance.id,
                 'facture': instance.facture.numero,
-                'montant': instance.montant,
-                'date': instance.date_versement
+                'montant': float(instance.montant),
+                'reste': facture.reste,
+                'date': str(instance.date_versement)
             }
         )
 
@@ -1685,19 +2081,55 @@ class JournalViewSet(viewsets.ModelViewSet):
 # Fonction utilitaire pour créer des entrées de journal
 def create_journal_entry(user, type_operation, description, boutique=None, details=None):
     try:
-        # Créer l'entrée de journal sans essayer d'accéder à la requête
+        from .utils import get_user_display_name
+        user_label = get_user_display_name(user)
+        if user_label and user_label not in description:
+            description = f"{user_label} — {description}"
+        journal_details = dict(details or {})
+        journal_details.setdefault('utilisateur', user_label)
+        if user and getattr(user, 'id', None):
+            journal_details.setdefault('utilisateur_id', user.id)
+        entreprise = None
+        if boutique and getattr(boutique, 'entreprise', None):
+            entreprise = boutique.entreprise
+        elif user and getattr(user, 'entreprise', None):
+            entreprise = user.entreprise
         Journal.objects.create(
             utilisateur=user,
+            entreprise=entreprise,
             boutique=boutique,
             type_operation=type_operation,
             description=description,
-            details=details,
-            ip_address=None  # On ne stocke plus l'IP pour éviter les problèmes
+            details=journal_details,
+            ip_address=None,
         )
     except Exception as e:
         print(f"Erreur lors de la création du journal: {str(e)}")
 
 # Vue pour le formulaire de contact
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
+    """Enregistre la déconnexion dans le journal."""
+    try:
+        user = request.user
+        boutique = getattr(user, 'boutique', None)
+        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', ''))
+        if ip and ',' in ip:
+            ip = ip.split(',')[0].strip()
+        Journal.objects.create(
+            utilisateur=user,
+            entreprise=getattr(boutique, 'entreprise', None) if boutique else None,
+            boutique=boutique,
+            type_operation='deconnexion',
+            description=f"{user.get_full_name() or user.username} s'est déconnecté(e)",
+            ip_address=ip or None,
+        )
+    except Exception:
+        pass
+    return Response({'detail': 'Déconnexion enregistrée.'})
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -2137,3 +2569,214 @@ def ajuster_stocks_inventaire(request, pk):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+
+
+class ExerciceFiscalViewSet(viewsets.ModelViewSet):
+    """CRUD + actions cloture/ouverture pour les exercices fiscaux."""
+    serializer_class = ExerciceFiscalSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ExerciceFiscal.objects.select_related('entreprise', 'cloture_par')
+        entreprise_id = self.request.query_params.get('entreprise')
+        if entreprise_id:
+            qs = qs.filter(entreprise_id=entreprise_id)
+        else:
+            user = self.request.user
+            if hasattr(user, 'entreprise') and user.entreprise:
+                qs = qs.filter(entreprise=user.entreprise)
+            elif hasattr(user, 'boutique') and user.boutique and user.boutique.entreprise:
+                qs = qs.filter(entreprise=user.boutique.entreprise)
+        return qs
+
+    @action(detail=False, methods=['get'], url_path='courant')
+    def exercice_courant(self, request):
+        """Retourne l''exercice ouvert de l''annee courante, le cree si absent."""
+        from django.utils import timezone
+        entreprise_id = request.query_params.get('entreprise')
+        if not entreprise_id:
+            user = request.user
+            if hasattr(user, 'entreprise') and user.entreprise:
+                entreprise_id = user.entreprise.id
+            elif hasattr(user, 'boutique') and user.boutique and user.boutique.entreprise:
+                entreprise_id = user.boutique.entreprise.id
+            else:
+                return Response({'error': 'entreprise requis'}, status=400)
+        annee = int(request.query_params.get('annee', timezone.now().year))
+        try:
+            exercice, created = ExerciceFiscal.get_or_create_for_entreprise(int(entreprise_id), annee)
+            return Response(ExerciceFiscalSerializer(exercice).data, status=201 if created else 200)
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
+
+    @action(detail=True, methods=['post'], url_path='cloture')
+    def cloture(self, request, pk=None):
+        """Cloturer un exercice : snapshot + verrouillage."""
+        from django.utils import timezone
+        exercice = self.get_object()
+        if exercice.statut == 'cloture':
+            return Response({'error': 'Cet exercice est deja cloture.'}, status=400)
+        boutiques = Boutique.objects.filter(entreprise=exercice.entreprise)
+        date_debut = exercice.date_debut
+        date_fin = exercice.date_fin
+        factures_qs = Facture.objects.filter(
+            boutique__in=boutiques,
+            created_at__date__gte=date_debut,
+            created_at__date__lte=date_fin,
+            status__in=['Payé', 'Partiellement payé', 'En attente'],
+        )
+        ca = factures_qs.aggregate(total=Sum('total'))['total'] or 0
+        nb_factures = factures_qs.count()
+        stocks = Stock.objects.filter(entrepot__in=boutiques).select_related('produit')
+        valeur_stock = sum(
+            (s.quantite or 0) * float(s.produit.prix_vente or s.produit.prix or 0)
+            for s in stocks
+        )
+        nb_produits = Produit.objects.filter(entreprise=exercice.entreprise, actif=True).count()
+        from django.db.models import F
+        total_achats = MouvementStock.objects.filter(
+            entrepot__in=boutiques,
+            type_mouvement='entree',
+            created_at__date__gte=date_debut,
+            created_at__date__lte=date_fin,
+        ).aggregate(total=Sum(F('quantite') * F('produit__prix_achat')))['total'] or 0
+        exercice.chiffre_affaires = ca
+        exercice.total_achats = total_achats
+        exercice.nb_factures = nb_factures
+        exercice.valeur_stock_cloture = valeur_stock
+        exercice.nb_produits = nb_produits
+        exercice.benefice_net = float(ca) - float(total_achats)
+        exercice.statut = 'cloture'
+        exercice.cloture_par = request.user
+        exercice.date_cloture = timezone.now()
+        exercice.notes = request.data.get('notes', '')
+        exercice.save()
+        return Response(ExerciceFiscalSerializer(exercice).data)
+
+    @action(detail=False, methods=['post'], url_path='ouvrir')
+    def ouvrir_nouvel_exercice(self, request):
+        """Ouvrir un nouvel exercice pour l''annee indiquee."""
+        from django.utils import timezone
+        entreprise_id = request.data.get('entreprise')
+        annee = int(request.data.get('annee', timezone.now().year))
+        if not entreprise_id:
+            return Response({'error': 'entreprise requis'}, status=400)
+        try:
+            exercice, created = ExerciceFiscal.get_or_create_for_entreprise(int(entreprise_id), annee)
+            if not created:
+                return Response({'message': f'Exercice {annee} existe deja.', 'exercice': ExerciceFiscalSerializer(exercice).data})
+            return Response(ExerciceFiscalSerializer(exercice).data, status=201)
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
+
+    @action(detail=True, methods=['get'], url_path='rapport')
+    def rapport(self, request, pk=None):
+        """Rapport détaillé de l'exercice : global + par entrepôt + par produit."""
+        import traceback
+        from django.db.models import F, Sum, Count
+        from collections import defaultdict
+        try:
+            exercice = self.get_object()
+            boutiques = list(Boutique.objects.filter(entreprise=exercice.entreprise))
+            if exercice.statut == 'cloture':
+                return Response({'exercice': ExerciceFiscalSerializer(exercice).data, 'source': 'snapshot'})
+
+            date_debut = exercice.date_debut
+            date_fin = exercice.date_fin
+            statuts_ca = ['Payé', 'Partiellement payé', 'En attente']
+
+            factures_qs = Facture.objects.filter(
+                boutique__in=boutiques,
+                created_at__date__gte=date_debut,
+                created_at__date__lte=date_fin,
+                status__in=statuts_ca,
+            )
+
+            # ── Totaux globaux ──────────────────────────────────────────────────
+            ca = factures_qs.aggregate(total=Sum('total'))['total'] or 0
+            nb_factures = factures_qs.count()
+
+            # Achats (mouvements entrée)
+            total_achats = MouvementStock.objects.filter(
+                entrepot__in=boutiques,
+                type_mouvement='entree',
+                created_at__date__gte=date_debut,
+                created_at__date__lte=date_fin,
+            ).aggregate(total=Sum(F('quantite') * F('produit__prix_achat')))['total'] or 0
+
+            # Stock actuel
+            stocks_qs = Stock.objects.filter(entrepot__in=boutiques).select_related('produit', 'entrepot')
+            valeur_stock = sum(
+                (s.quantite or 0) * float(s.produit.prix_vente or s.produit.prix or 0)
+                for s in stocks_qs
+            )
+            nb_produits = Produit.objects.filter(entreprise=exercice.entreprise, actif=True).count()
+
+            # ── Par entrepôt ────────────────────────────────────────────────────
+            par_entrepot = []
+            for b in boutiques:
+                f_b = factures_qs.filter(boutique=b)
+                ca_b = f_b.aggregate(t=Sum('total'))['t'] or 0
+                nb_b = f_b.count()
+                achats_b = MouvementStock.objects.filter(
+                    entrepot=b, type_mouvement='entree',
+                    created_at__date__gte=date_debut,
+                    created_at__date__lte=date_fin,
+                ).aggregate(total=Sum(F('quantite') * F('produit__prix_achat')))['total'] or 0
+                stock_b = sum(
+                    (s.quantite or 0) * float(s.produit.prix_vente or s.produit.prix or 0)
+                    for s in stocks_qs if s.entrepot_id == b.id
+                )
+                par_entrepot.append({
+                    'nom': b.nom,
+                    'ville': b.ville or '',
+                    'ca': float(ca_b),
+                    'nb_factures': nb_b,
+                    'total_achats': float(achats_b),
+                    'benefice': float(ca_b) - float(achats_b),
+                    'valeur_stock': float(stock_b),
+                })
+
+            # ── Par produit (lignes de commande dans les factures de la période) ─
+            produit_agg = defaultdict(lambda: {'nom': '', 'reference': '', 'qte': 0, 'ca': 0.0, 'stock': 0})
+            for cmd in CommandeClient.objects.filter(
+                facture__in=factures_qs
+            ).select_related('produit'):
+                d = produit_agg[cmd.produit_id]
+                d['nom'] = cmd.produit.nom
+                d['reference'] = cmd.produit.reference or ''
+                d['qte'] += cmd.quantite
+                d['ca'] += cmd.quantite * float(cmd.prix_unitaire_fcfa)
+
+            for cmd in CommandePartenaire.objects.filter(
+                facture__in=factures_qs
+            ).select_related('produit'):
+                d = produit_agg[cmd.produit_id]
+                d['nom'] = cmd.produit.nom
+                d['reference'] = cmd.produit.reference or ''
+                d['qte'] += cmd.quantite
+                d['ca'] += cmd.quantite * float(cmd.prix_unitaire_fcfa)
+
+            # Ajouter stock actuel par produit
+            stock_par_produit = defaultdict(int)
+            for s in stocks_qs:
+                stock_par_produit[s.produit_id] += s.quantite or 0
+            for pid, d in produit_agg.items():
+                d['stock'] = stock_par_produit.get(pid, 0)
+
+            par_produit = sorted(produit_agg.values(), key=lambda x: x['ca'], reverse=True)
+
+            return Response({
+                'exercice': ExerciceFiscalSerializer(exercice).data,
+                'source': 'live',
+                'chiffre_affaires': float(ca),
+                'total_achats': float(total_achats),
+                'nb_factures': nb_factures,
+                'valeur_stock': float(valeur_stock),
+                'nb_produits': nb_produits,
+                'benefice_net': float(ca) - float(total_achats),
+                'par_entrepot': par_entrepot,
+                'par_produit': par_produit,
+            })
+        except Exception as exc:
+            return Response({'error': str(exc), 'detail': traceback.format_exc()}, status=500)

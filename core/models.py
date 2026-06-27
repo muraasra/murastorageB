@@ -6,16 +6,35 @@ from django.core.exceptions import ValidationError
 from datetime import datetime, timedelta
 import uuid
 import string
-import random
+import secrets
 
 def generate_entreprise_id():
     """Génère un ID unique de 10 caractères pour l'entreprise"""
     while True:
-        # Génère un ID de 10 caractères alphanumériques
-        entreprise_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
-        # Vérifie que l'ID n'existe pas déjà
+        entreprise_id = ''.join(
+            secrets.choice(string.ascii_uppercase + string.digits)
+            for _ in range(10)
+        )
         if not Entreprise.objects.filter(id_entreprise=entreprise_id).exists():
             return entreprise_id
+
+
+def validate_image_file(file):
+    """Validate uploaded image files for security"""
+    import os
+    valid_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp']
+    ext = os.path.splitext(file.name)[1][1:].lower()
+    if ext not in valid_extensions:
+        raise ValidationError(f'Invalid file type: {ext}. Allowed: {", ".join(valid_extensions)}')
+    
+    if file.size > 5 * 1024 * 1024:
+        raise ValidationError('File too large (max 5MB)')
+    
+    if hasattr(file, 'file') and hasattr(file.file, 'content_type'):
+        content_type = file.file.content_type
+        if not content_type.startswith('image/'):
+            raise ValidationError('File is not a valid image')
+
 
 class Entreprise(models.Model):
     """Modèle pour représenter une entreprise"""
@@ -28,7 +47,7 @@ class Entreprise(models.Model):
     nom = models.CharField(max_length=200, help_text="Nom de l'entreprise")
     description = models.TextField(blank=True, help_text="Description de l'entreprise")
     secteur_activite = models.CharField(max_length=100, help_text="Secteur d'activité")
-    logo = models.ImageField(upload_to='entreprises/logos/', blank=True, null=True, help_text="Logo de l'entreprise")
+    logo = models.ImageField(upload_to='entreprises/logos/', blank=True, null=True, validators=[validate_image_file], help_text="Logo de l'entreprise")
     
     # Informations de contact
     adresse = models.TextField(help_text="Adresse complète")
@@ -228,7 +247,7 @@ class Produit(models.Model):
     details = models.JSONField(default=dict, blank=True, help_text="Détails supplémentaires sous forme de JSON (clé-valeur)")
     
     # Image
-    image = models.ImageField(upload_to='produits/images/', blank=True, null=True, help_text="Image du produit")
+    image = models.ImageField(upload_to='produits/images/', blank=True, null=True, validators=[validate_image_file], help_text="Image du produit")
     
     # 2. Informations commerciales essentielles
     prix_achat = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Prix d'achat unitaire")
@@ -407,9 +426,62 @@ class Produit(models.Model):
             models.Index(fields=['created_at']),
         ]
 
+class ProduitVariante(models.Model):
+    """
+    Variante d'un produit (ex: 500ml, Rouge L, 64GB Noir).
+    Chaque variante a ses propres prix, SKU, code-barres et stock.
+    """
+    produit = models.ForeignKey(
+        'Produit', on_delete=models.CASCADE, related_name='variantes'
+    )
+    nom = models.CharField(max_length=200, help_text="Nom de la variante (ex: 500ml, Rouge - L)")
+    attributs = models.JSONField(
+        default=dict, blank=True,
+        help_text='Attributs libres ex: {"Grammage":"500g","Couleur":"Rouge"}'
+    )
+    sku = models.CharField(max_length=100, unique=True, null=True, blank=True)
+    code_barres = models.CharField(max_length=50, unique=True, null=True, blank=True)
+    prix_achat = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    prix_vente = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    prix_gros = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    actif = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if not self.sku:
+            import uuid
+            prefix = self.produit.sku or 'VAR'
+            suffix = str(uuid.uuid4())[:6].upper()
+            self.sku = f"{prefix}-{suffix}"
+        super().save(*args, **kwargs)
+
+    @property
+    def marge(self):
+        if self.prix_achat and self.prix_vente and float(self.prix_achat) > 0:
+            return round((float(self.prix_vente) - float(self.prix_achat)) / float(self.prix_achat) * 100, 1)
+        return 0
+
+    def __str__(self):
+        return f"{self.produit.nom} — {self.nom}"
+
+    class Meta:
+        ordering = ['produit', 'nom']
+        verbose_name = "Variante produit"
+        verbose_name_plural = "Variantes produit"
+        indexes = [
+            models.Index(fields=['produit']),
+            models.Index(fields=['actif']),
+        ]
+
 class Stock(models.Model):
     """Modèle pour la gestion des stocks par entrepôt"""
     produit = models.ForeignKey(Produit, on_delete=models.CASCADE, related_name='stocks')
+    variante = models.ForeignKey(
+        'ProduitVariante', on_delete=models.CASCADE,
+        related_name='stocks', null=True, blank=True,
+        help_text="Variante concernée (null = produit sans variante)"
+    )
     entrepot = models.ForeignKey(Boutique, on_delete=models.CASCADE, related_name='stocks')
     quantite = models.IntegerField(default=0)
     quantite_reservee = models.IntegerField(default=0, help_text="Quantité réservée pour les commandes")
@@ -424,10 +496,23 @@ class Stock(models.Model):
         return max(0, self.quantite - self.quantite_reservee)
     
     def __str__(self):
+        if self.variante:
+            return f"{self.produit.nom} [{self.variante.nom}] - {self.entrepot.nom} ({self.quantite})"
         return f"{self.produit.nom} - {self.entrepot.nom} ({self.quantite})"
-    
+
     class Meta:
-        unique_together = ['produit', 'entrepot']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['produit', 'entrepot'],
+                condition=models.Q(variante__isnull=True),
+                name='unique_stock_produit_entrepot'
+            ),
+            models.UniqueConstraint(
+                fields=['variante', 'entrepot'],
+                condition=models.Q(variante__isnull=False),
+                name='unique_stock_variante_entrepot'
+            ),
+        ]
         verbose_name = "Stock"
         verbose_name_plural = "Stocks"
         indexes = [
@@ -461,6 +546,11 @@ class MouvementStock(models.Model):
     reference_document = models.CharField(max_length=100, blank=True, help_text="Référence du document source")
     motif = models.TextField(blank=True)
     utilisateur = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='mouvements_stock')
+    variante = models.ForeignKey(
+        'ProduitVariante', on_delete=models.SET_NULL,
+        related_name='mouvements', null=True, blank=True,
+        help_text="Variante concernée (null = produit sans variante)"
+    )
     
     created_at = models.DateTimeField(auto_now_add=True)
     
@@ -618,20 +708,39 @@ class Client(models.Model):
 
 class Partenaire(models.Model):
     choiceStatut = (
-        ('encours','En Cours'),
-        ('paye','Payé'),
+        ('encours', 'En Cours'),
+        ('paye', 'Payé'),
     )
-    
+
     nom = models.CharField(max_length=100)
-    prenom =  models.CharField(max_length=100, default='')
-    telephone = models.CharField(max_length=20,default=0)
-    statut = models.CharField(max_length=20, choices=choiceStatut,default='encours')
-    boutique = models.BooleanField(default=True)
+    prenom = models.CharField(max_length=100, default='')
+    telephone = models.CharField(max_length=20, default='')
+    statut = models.CharField(max_length=20, choices=choiceStatut, default='encours')
+    # Rattachement multi-tenant (boutique + entreprise)
+    boutique = models.ForeignKey(
+        'Boutique', on_delete=models.CASCADE,
+        related_name='partenaires', null=True, blank=True
+    )
+    entreprise = models.ForeignKey(
+        'Entreprise', on_delete=models.CASCADE,
+        related_name='partenaires', null=True, blank=True
+    )
     localisation = models.CharField(max_length=100, default='Bafoussam')
     dateadhesion = models.DateTimeField(default=now)
-    
+    limite_credit = models.FloatField(default=0, help_text="Plafond de crédit autorisé (0 = illimité)")
+    notes = models.TextField(blank=True, default='', help_text="Notes internes sur le partenaire")
+
+    class Meta:
+        ordering = ['nom', 'prenom']
+        verbose_name = 'Partenaire'
+        verbose_name_plural = 'Partenaires'
+        indexes = [
+            models.Index(fields=['boutique']),
+            models.Index(fields=['entreprise']),
+            models.Index(fields=['statut']),
+        ]
+
     def __str__(self):
-        """Représentation string du partenaire"""
         if self.prenom:
             return f"{self.prenom} {self.nom}".strip()
         return self.nom
@@ -699,6 +808,11 @@ class CommandeClient(models.Model):
     """Commande pour un client"""
     facture = models.ForeignKey(Facture, on_delete=models.CASCADE, related_name='commandes_client')
     produit = models.ForeignKey(Produit, on_delete=models.CASCADE)
+    variante = models.ForeignKey(
+        'ProduitVariante', on_delete=models.SET_NULL,
+        related_name='commandes_client',
+        null=True, blank=True
+    )
     quantite = models.IntegerField()
     prix_unitaire_fcfa = models.FloatField()
     prix_initial_fcfa = models.FloatField(null=True, blank=True)  # Prix initial avant modification
@@ -721,6 +835,11 @@ class CommandePartenaire(models.Model):
     """Commande pour un partenaire"""
     facture = models.ForeignKey(Facture, on_delete=models.CASCADE, related_name='commandes_partenaire')
     produit = models.ForeignKey(Produit, on_delete=models.CASCADE)
+    variante = models.ForeignKey(
+        'ProduitVariante', on_delete=models.SET_NULL,
+        related_name='commandes_partenaire',
+        null=True, blank=True
+    )
     quantite = models.IntegerField()
     prix_unitaire_fcfa = models.FloatField()
     prix_initial_fcfa = models.FloatField(null=True, blank=True)  # Prix initial avant modification
@@ -818,8 +937,8 @@ class SubscriptionPlan(models.Model):
     
     # Limitations par plan
     max_entreprises = models.IntegerField(default=1)
-    max_boutiques = models.IntegerField(default=1)
-    max_users = models.IntegerField(default=2)
+    max_boutiques = models.IntegerField(default=1, null=True, blank=True)  # null = illimité
+    max_users = models.IntegerField(default=2, null=True, blank=True)  # null = illimité
     max_produits = models.IntegerField(default=50, null=True, blank=True)  # null = illimité, 999999 = illimité (pour compatibility)
     max_factures_per_month = models.IntegerField(default=100, null=True, blank=True)  # null = illimité, 999999 = illimité
     max_inventaires_per_month = models.IntegerField(default=0, null=True, blank=True)  # 0 = aucun
@@ -1298,3 +1417,136 @@ class InventaireProduit(models.Model):
             inventaire.ecarts_trouves += 1
         
         inventaire.save()
+
+
+class PaymentTransaction(models.Model):
+    """Modèle pour les transactions de paiement des abonnements."""
+    METHOD_CHOICES = [
+        ('orange_money', 'Orange Money'),
+        ('mtn_money', 'MTN Mobile Money'),
+        ('stripe', 'Carte bancaire (Stripe)'),
+        ('bank_card', 'Carte bancaire'),
+        ('manual', 'Manuel (admin)'),
+    ]
+    STATUS_CHOICES = [
+        ('pending', 'En attente'),
+        ('processing', 'En cours'),
+        ('success', 'Réussi'),
+        ('failed', 'Échoué'),
+        ('refunded', 'Remboursé'),
+        ('cancelled', 'Annulé'),
+    ]
+
+    entreprise = models.ForeignKey(
+        Entreprise, on_delete=models.CASCADE, related_name='payments'
+    )
+    subscription = models.ForeignKey(
+        EntrepriseSubscription, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='payments'
+    )
+    plan = models.ForeignKey(
+        SubscriptionPlan, on_delete=models.SET_NULL,
+        null=True, related_name='payments'
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=5, default='XAF')
+    method = models.CharField(max_length=20, choices=METHOD_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    billing_period = models.CharField(
+        max_length=10, choices=[('monthly', 'Mensuel'), ('yearly', 'Annuel')], default='monthly'
+    )
+
+    # Références externes (pour les vraies API de paiement)
+    external_reference = models.CharField(max_length=200, blank=True, help_text='Référence chez le prestataire de paiement')
+    phone_number = models.CharField(max_length=20, blank=True, help_text='Pour OM/MTN')
+    card_last4 = models.CharField(max_length=4, blank=True, help_text='4 derniers chiffres carte')
+
+    # Métadonnées
+    initiated_by = models.ForeignKey(
+        'User', on_delete=models.SET_NULL, null=True, related_name='payments_initiated'
+    )
+    failure_reason = models.TextField(blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Transaction de paiement'
+        verbose_name_plural = 'Transactions de paiement'
+        indexes = [
+            models.Index(fields=['entreprise']),
+            models.Index(fields=['status']),
+            models.Index(fields=['method']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.entreprise.nom} — {self.amount} {self.currency} ({self.get_status_display()})"
+
+
+class ExerciceFiscal(models.Model):
+    """Gestion des exercices fiscaux (années comptables) par entreprise."""
+
+    STATUT_CHOICES = [
+        ('ouvert', 'Ouvert'),
+        ('cloture', 'Clôturé'),
+        ('archive', 'Archivé'),
+    ]
+
+    entreprise = models.ForeignKey(
+        Entreprise, on_delete=models.CASCADE, related_name='exercices_fiscaux'
+    )
+    annee = models.IntegerField(help_text="Année de l'exercice (ex: 2024)")
+    date_debut = models.DateField(help_text="Date de début de l'exercice")
+    date_fin = models.DateField(help_text="Date de fin de l'exercice")
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='ouvert')
+
+    # Données snapshot capturées à la clôture
+    chiffre_affaires = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    total_achats = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    nb_factures = models.IntegerField(default=0)
+    valeur_stock_cloture = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    nb_produits = models.IntegerField(default=0)
+    benefice_net = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+
+    # Audit
+    cloture_par = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='exercices_clotures'
+    )
+    date_cloture = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [['entreprise', 'annee']]
+        ordering = ['-annee']
+        verbose_name = 'Exercice fiscal'
+        verbose_name_plural = 'Exercices fiscaux'
+        indexes = [
+            models.Index(fields=['entreprise', 'annee']),
+            models.Index(fields=['statut']),
+        ]
+
+    def __str__(self):
+        return f"{self.entreprise.nom} — Exercice {self.annee} ({self.get_statut_display()})"
+
+    def get_or_create_for_entreprise(entreprise_id: int, annee: int = None):
+        """Retourne ou crée l'exercice pour une entreprise et une année donnée."""
+        from django.utils import timezone
+        if annee is None:
+            annee = timezone.now().year
+        entreprise = Entreprise.objects.get(pk=entreprise_id)
+        exercice, created = ExerciceFiscal.objects.get_or_create(
+            entreprise=entreprise,
+            annee=annee,
+            defaults={
+                'date_debut': f"{annee}-01-01",
+                'date_fin': f"{annee}-12-31",
+                'statut': 'ouvert',
+            }
+        )
+        return exercice, created
