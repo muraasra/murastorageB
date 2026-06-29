@@ -53,7 +53,7 @@ class EntrepriseCreateSerializer(serializers.ModelSerializer):
     numero_fiscal = serializers.CharField(max_length=50, required=False, allow_blank=True, help_text="Numéro fiscal")
     nombre_employes = serializers.IntegerField(default=0, help_text="Nombre d'employés")
     annee_creation = serializers.IntegerField(help_text="Année de création de l'entreprise")
-    pack_type = serializers.ChoiceField(choices=[('free', 'Free'), ('basic', 'Basic'), ('premium', 'Premium'), ('organisation', 'Organisation')], default='free', help_text="Type de pack")
+    pack_type = serializers.ChoiceField(choices=[('free', 'Essai Gratuit'), ('starter', 'Starter'), ('business', 'Business'), ('pro', 'Pro')], default='free', help_text="Type de pack")
     pack_prix = serializers.FloatField(default=0, help_text="Prix du pack")
     pack_duree = serializers.CharField(max_length=20, default='mensuel', help_text="Durée du pack")
     is_active = serializers.BooleanField(default=True, help_text="Statut actif de l'entreprise")

@@ -67,10 +67,10 @@ class Entreprise(models.Model):
     pack_type = models.CharField(
         max_length=20,
         choices=[
-            ('free', 'Free'),
-            ('basic', 'Basic'),
-            ('premium', 'Premium'),
-            ('organisation', 'Organisation'),
+            ('free', 'Essai Gratuit'),
+            ('starter', 'Starter'),
+            ('business', 'Business'),
+            ('pro', 'Pro'),
         ],
         default='free'
     )
@@ -923,10 +923,10 @@ class Journal(models.Model):
 class SubscriptionPlan(models.Model):
     """Modèle pour définir les plans d'abonnement"""
     PLAN_CHOICES = [
-        ('free', 'Free'),
-        ('basic', 'Basic'),
-        ('premium', 'Premium'),
-        ('organisation', 'Organisation'),
+        ('free', 'Essai Gratuit'),
+        ('starter', 'Starter'),
+        ('business', 'Business'),
+        ('pro', 'Pro'),
     ]
     
     name = models.CharField(max_length=20, choices=PLAN_CHOICES, unique=True)
