@@ -155,27 +155,18 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filtrer les utilisateurs par entreprise de l'utilisateur connecté"""
         queryset = super().get_queryset()
-        
-        # Pour les actions de lecture (list, retrieve), permettre l'accès selon le rôle
-        if self.action in ['list', 'retrieve']:
-            # Si superadmin, peut voir tous les utilisateurs
-            if self.request.user.role == 'superadmin':
-                return queryset.select_related('entreprise', 'boutique')
-            
-            # Si admin/user avec entreprise, peut voir les utilisateurs de son entreprise
-            if self.request.user.entreprise:
-                queryset = queryset.filter(entreprise=self.request.user.entreprise)
-            else:
-                # Si pas d'entreprise, retourner seulement l'utilisateur lui-même
-                queryset = queryset.filter(id=self.request.user.id)
+        user = self.request.user
+
+        # Platform admin (superadmin sans entreprise) : voit tout
+        if user.role == 'superadmin' and not user.entreprise:
+            return queryset.select_related('entreprise', 'boutique')
+
+        # Tous les autres : uniquement leur entreprise
+        if user.entreprise:
+            queryset = queryset.filter(entreprise=user.entreprise)
         else:
-            # Pour les autres actions (create, update, delete), filtrer par entreprise
-            if self.request.user.entreprise:
-                queryset = queryset.filter(entreprise=self.request.user.entreprise)
-            else:
-                # Si pas d'entreprise, retourner seulement l'utilisateur lui-même
-                queryset = queryset.filter(id=self.request.user.id)
-        
+            queryset = queryset.filter(id=user.id)
+
         return queryset.select_related('entreprise', 'boutique')
 
     def get_permissions(self):
@@ -373,9 +364,11 @@ class EntrepriseViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filtrer les entreprises selon le rôle de l'utilisateur"""
         user = self.request.user
-        if user.role == 'superadmin':
+        # Platform admin (superadmin sans entreprise) : voit toutes les entreprises
+        if user.role == 'superadmin' and not user.entreprise:
             return Entreprise.objects.all()
-        elif user.entreprise:
+        # Tous les autres : uniquement leur propre entreprise
+        if user.entreprise:
             return Entreprise.objects.filter(id=user.entreprise.id)
         return Entreprise.objects.none()
     
@@ -530,13 +523,14 @@ class BoutiqueViewSet(viewsets.ModelViewSet):
         """Filtrer les boutiques par entreprise de l'utilisateur connecté"""
         queryset = super().get_queryset()
 
-        # Le superadmin voit toutes les boutiques (peut filtrer via ?entreprise=id)
-        if self.request.user.role == 'superadmin':
+        user = self.request.user
+        # Platform admin (superadmin sans entreprise) : voit tout, filtre optionnel
+        if user.role == 'superadmin' and not user.entreprise:
             return queryset.select_related('entreprise')
 
-        # Admin/user : uniquement les boutiques de leur entreprise
-        if self.request.user.entreprise:
-            queryset = queryset.filter(entreprise=self.request.user.entreprise)
+        # Tous les autres : uniquement les boutiques de leur entreprise
+        if user.entreprise:
+            queryset = queryset.filter(entreprise=user.entreprise)
         else:
             queryset = queryset.none()
 
@@ -694,7 +688,7 @@ class ProduitVarianteViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
-        if user.role == 'superadmin':
+        if user.role == 'superadmin' and not user.entreprise:
             return qs
         if user.entreprise:
             return qs.filter(produit__entreprise=user.entreprise)
@@ -1440,8 +1434,8 @@ class FactureViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         user = self.request.user
 
-        # Superadmin : peut filtrer par boutique ou entreprise via query params
-        if user.role == 'superadmin':
+        # Platform admin (superadmin sans entreprise) : peut filtrer par boutique/entreprise
+        if user.role == 'superadmin' and not user.entreprise:
             boutique_id = self.request.query_params.get('boutique')
             entreprise_id = self.request.query_params.get('entreprise')
             if boutique_id:
@@ -1910,12 +1904,17 @@ class CommandeClientViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminOrSuperAdmin]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['facture', 'produit']
-    
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.role == 'superadmin' and not user.entreprise:
+            return qs
+        if user.entreprise:
+            return qs.filter(facture__boutique__entreprise=user.entreprise)
+        return qs.none()
+
     def get_permissions(self):
-        """
-        Permettre la lecture (GET) pour tous les utilisateurs authentifiés,
-        mais restreindre les modifications aux admins/superadmins.
-        """
         if self.action in ['list', 'retrieve']:
             from rest_framework.permissions import IsAuthenticated
             return [IsAuthenticated()]
@@ -1956,9 +1955,13 @@ class CommandePartenaireViewSet(viewsets.ModelViewSet):
     filterset_fields = ['facture', 'produit']  # 'partenaire' n'existe pas directement sur CommandePartenaire, il est via facture.partenaire
     
     def get_queryset(self):
-        """Optimiser les requêtes avec select_related pour éviter les N+1 queries"""
         queryset = super().get_queryset()
-        return queryset.select_related('produit', 'facture', 'facture__boutique', 'facture__partenaire')
+        user = self.request.user
+        if user.role == 'superadmin' and not user.entreprise:
+            return queryset.select_related('produit', 'facture', 'facture__boutique', 'facture__partenaire')
+        if user.entreprise:
+            return queryset.filter(facture__boutique__entreprise=user.entreprise).select_related('produit', 'facture', 'facture__boutique', 'facture__partenaire')
+        return queryset.none()
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -1994,7 +1997,7 @@ class VersementViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
-        if user.role == 'superadmin':
+        if user.role == 'superadmin' and not user.entreprise:
             return qs
         if user.entreprise:
             return qs.filter(facture__boutique__entreprise=user.entreprise)
@@ -2050,14 +2053,20 @@ class JournalViewSet(viewsets.ModelViewSet):
     ordering = ['-date_operation']
 
     def get_queryset(self):
-        queryset = Journal.objects.all()
-        
-        # Filtres
-        boutique = self.request.query_params.get('boutique', None)
-        type_operation = self.request.query_params.get('type_operation', None)
-        utilisateur = self.request.query_params.get('utilisateur', None)
-        date_debut = self.request.query_params.get('date_debut', None)
-        date_fin = self.request.query_params.get('date_fin', None)
+        user = self.request.user
+        # Isolation par entreprise
+        if user.role == 'superadmin' and not user.entreprise:
+            queryset = Journal.objects.all()
+        elif user.entreprise:
+            queryset = Journal.objects.filter(boutique__entreprise=user.entreprise)
+        else:
+            return Journal.objects.none()
+
+        boutique = self.request.query_params.get('boutique')
+        type_operation = self.request.query_params.get('type_operation')
+        utilisateur = self.request.query_params.get('utilisateur')
+        date_debut = self.request.query_params.get('date_debut')
+        date_fin = self.request.query_params.get('date_fin')
 
         if boutique:
             queryset = queryset.filter(boutique_id=boutique)
