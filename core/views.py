@@ -1297,6 +1297,15 @@ class PrixProduitViewSet(viewsets.ModelViewSet):
     filterset_fields = ['produit']
     ordering_fields = ['date', 'prix_vente_yen']
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.role == 'superadmin' and not user.entreprise:
+            return qs
+        if user.entreprise:
+            return qs.filter(produit__entreprise=user.entreprise)
+        return qs.none()
+
 # Partenaire : lié à la boutique, modifiable par admin ou superadmin
 # Client : gestion des clients de l'entreprise
 class SequenceFactureViewSet(viewsets.ModelViewSet):
@@ -2044,6 +2053,15 @@ class HistoriqueStockViewSet(viewsets.ModelViewSet):
     filterset_fields = ['produit', 'user']
     search_fields = ['motif']
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.role == 'superadmin' and not user.entreprise:
+            return qs
+        if user.entreprise:
+            return qs.filter(produit__entreprise=user.entreprise)
+        return qs.none()
+
 class JournalViewSet(viewsets.ModelViewSet):
     queryset = Journal.objects.all()
     serializer_class = JournalSerializer
@@ -2588,16 +2606,19 @@ class ExerciceFiscalViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = ExerciceFiscal.objects.select_related('entreprise', 'cloture_par')
-        entreprise_id = self.request.query_params.get('entreprise')
-        if entreprise_id:
-            qs = qs.filter(entreprise_id=entreprise_id)
-        else:
-            user = self.request.user
-            if hasattr(user, 'entreprise') and user.entreprise:
-                qs = qs.filter(entreprise=user.entreprise)
-            elif hasattr(user, 'boutique') and user.boutique and user.boutique.entreprise:
-                qs = qs.filter(entreprise=user.boutique.entreprise)
-        return qs
+        user = self.request.user
+        # Platform admin : accès total (peut filtrer par ?entreprise=)
+        if user.role == 'superadmin' and not user.entreprise:
+            entreprise_id = self.request.query_params.get('entreprise')
+            if entreprise_id:
+                qs = qs.filter(entreprise_id=entreprise_id)
+            return qs
+        # Tous les autres : uniquement leur entreprise, le param ?entreprise est ignoré
+        if user.entreprise:
+            return qs.filter(entreprise=user.entreprise)
+        if user.boutique and user.boutique.entreprise:
+            return qs.filter(entreprise=user.boutique.entreprise)
+        return qs.none()
 
     @action(detail=False, methods=['get'], url_path='courant')
     def exercice_courant(self, request):
